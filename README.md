@@ -56,7 +56,7 @@ The output directory must be new. The script validates both files before creatin
 Install the two generated files in this order:
 
 1. **Flash the modified firmware first:** send `dist/synfact_syx_v0.0.1.syx` to the Syntakt using the **Drop** tab in [Synfact Transfer](synfact-transfer/readme.md), following the instrument's OS update procedure. Wait for the firmware installation to finish and follow any restart prompts on the instrument before proceeding. A completed file transfer alone does not mean the firmware installation has finished.
-2. **Transfer the mods file afterwards:** once the modified firmware is running, use the **Drop** tab in Synfact Transfer to send `dist/synfact_mods_v0.0.1.smz4` to the Syntakt. Wait for the transfer and readback verification to complete.
+2. **Transfer the mods file afterwards:** once the modified firmware is running, use the **Drop** tab in Synfact Transfer to send `dist/synfact_mods_v0.0.1.smz4` to the Syntakt. Wait for the transfer and readback verification to complete. **Then restart the Syntakt to load the complete firmware.**
 
 Both steps are required to install this release. If you selected a different build output directory, use the files from that directory instead of `dist/`.
 
