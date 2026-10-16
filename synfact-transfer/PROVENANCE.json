@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-13",
+  "modules": [
+    {
+      "file": "vendor/stfiles.py",
+      "source": "digikit-syntakt-review/tools/stfiles.py",
+      "source_sha256": "2499c1fda386c84892daaff04644a6aae845df0ace7066ee481630d2ba685a04",
+      "copy_sha256": "2499c1fda386c84892daaff04644a6aae845df0ace7066ee481630d2ba685a04",
+      "adaptation": "Unmodified snapshot."
+    },
+    {
+      "file": "vendor/files_host.py",
+      "source": "syntakt-work/files-v1/files_host.py",
+      "source_sha256": "d124b9c4c075ef5680b19334f0b512234a2be8b42f411a7e9f2b24cb5a3bc90f",
+      "copy_sha256": "d124b9c4c075ef5680b19334f0b512234a2be8b42f411a7e9f2b24cb5a3bc90f",
+      "adaptation": "Unmodified snapshot."
+    },
+    {
+      "file": "vendor/emmc_dump.py",
+      "source": "syntakt-work/loader-v5-dump/emmc_dump.py",
+      "source_sha256": "02cf84d15b45d1bd151cd811952d566b233bb79b807f4ea03ae01938e4713a3f",
+      "copy_sha256": "3602fe6a7be881e15e7e8f623c657f508b6c6cb93ce8b4bd603b5adf2c0635ca",
+      "adaptation": "Only import paths adapted for the application."
+    },
+    {
+      "file": "vendor/hzfs.py",
+      "source": "syntakt-work/loader-v6-hz/hzfs.py",
+      "source_sha256": "25f8921eb3e7fc4a4c974efce20b1244a6145204570954b426e5797b5b98111c",
+      "copy_sha256": "7f18be21b4967745ffa4b40a477bb6bb820ea45a7dacc19eb1080c5e5cb9fa94",
+      "adaptation": "Only import paths adapted for the application."
+    },
+    {
+      "file": "vendor/elektron_object.py",
+      "source": "syntakt-work/dn2st/elektron_object.py",
+      "source_sha256": "93ce3edfe3b64653b3d3536809430a8c0efce5891b4bc3262a6a5bcfa0c17b4b",
+      "copy_sha256": "93ce3edfe3b64653b3d3536809430a8c0efce5891b4bc3262a6a5bcfa0c17b4b",
+      "adaptation": "Unmodified snapshot."
+    }
+  ]
+}
