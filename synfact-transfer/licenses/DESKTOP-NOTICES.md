@@ -1,6 +1,6 @@
 # Desktop runtime
 
-Synfact Transfer retains the upstream application's GPLv2 license.
+Synfact Transfer project code is licensed under the MIT License; see ../LICENSE.
 Bundled dependencies retain their own copyright and license terms.
 The build script copies package metadata and license files into runtime/.
 The existing THIRD_PARTY_NOTICES.txt covers Python and python-rtmidi.

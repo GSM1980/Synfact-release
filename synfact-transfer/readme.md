@@ -209,10 +209,11 @@ provided, but current macOS binaries have not been compiled or validated here.
 
 ## License and support
 
-The existing GPLv2 license and third-party notices are retained in `LICENSE`,
-`THIRD_PARTY_NOTICES.txt` and `licenses/DESKTOP-NOTICES.md`. `PROVENANCE.json`
-records the origin and hashes of the unchanged vendor modules. Bundled runtime
-components retain their own licenses.
+Synfact Transfer and its bundled project device helper modules are licensed
+under the [MIT License](LICENSE). Third-party dependency notices are retained
+in `THIRD_PARTY_NOTICES.txt` and `licenses/DESKTOP-NOTICES.md`.
+`PROVENANCE.json` records the origin and hashes of the vendor modules.
+Bundled runtime components retain their own licenses.
 
 If you would like to help the project grow,
 [support this project on Ko-fi](https://ko-fi.com/ggsm80).

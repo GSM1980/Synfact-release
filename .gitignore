@@ -1,2 +1,7 @@
 *.zip
 .DS_Store
+*.syx
+*.smz4
+__pycache__/
+dist/
+.synfact-build-*/

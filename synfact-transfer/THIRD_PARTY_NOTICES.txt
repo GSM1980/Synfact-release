@@ -1,6 +1,6 @@
-Syntakt Manager: component notices
+Synfact Transfer: component notices
 
-New application code and stfiles: GPL version 2; see LICENSE. Original project modules retain their prior rights.
+Project application code and device helper modules: MIT License; see LICENSE. Third-party dependencies retain the licenses and copyright notices reproduced below.
 
 Python runtime:
 A. HISTORY OF THE SOFTWARE

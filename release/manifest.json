@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "version": "0.0.1",
+  "original": {
+    "filename": "Syntakt_OS1.41.syx",
+    "bytes": 2571424,
+    "sha256": "8e2488f462c4a5656396a895f113bcd415e9900fa8709340dccf45d4cb9ed19e"
+  },
+  "firmware": {
+    "filename": "synfact_syx_v0.0.1.syx",
+    "bytes": 2473376,
+    "sha256": "e8e8f3b8146e9b289c94ef2aea94383c1f091cd626363b797ed5f7100d0151df"
+  },
+  "machines": {
+    "filename": "synfact_mods_v0.0.1.smz4",
+    "bytes": 310532,
+    "sha256": "df54a8001a813e9d49f08f9055b9a87a37db4b10addb3c7f5ac36f548b7247dc",
+    "url": "https://drive.google.com/uc?export=download&id=1wCP8BkWBFEnbmXpK23rjT6yj8GCKQnWn"
+  },
+  "patch": {
+    "filename": "firmware.xor.zlib",
+    "bytes": 1923895,
+    "sha256": "4d7670a6a210d416745817b032fb2d288dd07ae81fcd7de10308a73d8df5edeb"
+  },
+  "validation": {
+    "protected_sections": [
+      1,
+      2,
+      4,
+      5,
+      6,
+      8
+    ],
+    "destinations": "unchanged in the pinned reference release",
+    "full_app_boot_acceptance": false,
+    "hardware_validation": false,
+    "note": "Exact reproduction of the fixed experimental release; see README limitations."
+  }
+}
