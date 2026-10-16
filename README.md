@@ -11,6 +11,16 @@ A mod system for the Elektron Syntakt.
 - **Basic sample manager and sample pool** for organizing samples and assigning them to project slots.
 - **Sampling and resampling capabilities.** Press the **SOUND button twice in quick succession** to open the recorder and capture external inputs or internal audio.
 
+## Roadmap
+
+Planned future modifications, not included in the current release:
+
+- **FM TONE port from Digitone MK1.**
+- **Polyphonic mode using voices from other tracks**, with a slave mode for each linked track.
+- **Master compressor.**
+- **Third effect send**, starting with chorus.
+- **Third LFO.**
+
 ## Build the modified firmware
 
 You need **Python 3.10 or later**, an internet connection, and the **official, unmodified Elektron Syntakt OS 1.41 file**. Obtain that file from Elektron; it is not included in this repository. No Python packages or compilers need to be installed.
