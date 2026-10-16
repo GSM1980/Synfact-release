@@ -1,9 +1,17 @@
 # Synfact Transfer 0.0.1
 
-Synfact Transfer is a standalone desktop application for managing local device
-transfers over USB MIDI. It provides a desktop window with a bundled interface
-engine, file selection dialogs and a modal transfer progress bar. End users do
-not need to install Python, Qt, a browser or additional packages.
+Synfact Transfer is a desktop application for managing local device transfers
+over USB MIDI. It provides a desktop window, file selection dialogs and a modal
+transfer progress bar.
+
+**This repository currently provides source code and build scripts only. No
+precompiled executables or application ZIPs are published.** Build the app for
+your platform using the instructions below, or run it from source as described
+in [Development and current status](#development-and-current-status).
+
+The build scripts bundle Python, Qt and the interface engine into a standalone
+application. Once that package has been built, running it does not require a
+separate Python, Qt or browser installation.
 
 ## Features
 
@@ -30,7 +38,11 @@ up to 5 seconds; longer samples require extended storage. Extended sample IDs
 identify stored files, rather than sound banks. Deleting samples can leave
 references in existing projects.
 
-## Run a packaged build
+## Run a locally packaged build
+
+This section applies after you have built the app using the instructions below.
+The ZIPs and applications mentioned here are local build outputs, not published
+downloads.
 
 **Windows:** extract the complete portable ZIP and run
 `SynfactTransfer/SynfactTransfer.exe`. Keep `_internal` beside the executable.
