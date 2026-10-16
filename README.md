@@ -7,7 +7,7 @@ A mod system for the Elektron Syntakt.
 ## Features
 
 - **Digitakt MK1 sample machines:** SP ONE SHOT, SP WERP, SP REPITCH, and SP SLICE.
-- **Long sample support in slots 65–128.** Existing projects are migrated using their 64 stock samples, initially mapped into slots 65–128. After migration, you can organize and replace samples as you prefer using the sample manager and sample pool.
+- **Long sample support in slots 65–128.** Existing projects are migrated with their 64 stock samples in sample pool slots 1–64, leaving slots 65–128 free for long samples. After migration, you can organize and replace samples as you prefer using the sample manager and sample pool.
 - **Basic sample manager and sample pool** for organizing samples and assigning them to project slots.
 - **Sampling and resampling capabilities.** Press the **SOUND button twice in quick succession** to open the recorder and capture external inputs or internal audio.
 
