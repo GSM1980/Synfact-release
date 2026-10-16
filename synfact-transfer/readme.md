@@ -18,6 +18,11 @@ separate Python, Qt or browser installation.
 - **Drop:** upload firmware (`.syx`) or mods (`.smz4`). Current SAFE envelopes
   and legacy mods headers are supported. The original file is transferred
   unchanged and verified by readback; the application does not build firmware.
+  Mods uploads check extended storage directly, including on a first installation.
+  If both HZFS indexes are absent, the app initializes and verifies them before
+  uploading mods. Existing valid indexes and samples are preserved; read errors
+  or damaged HZFS indexes stop the upload. Run the modified firmware and finish
+  its restart procedure before uploading mods.
 - **Projects:** browse 128 slots and import/export `.stprj` files.
 - **Sounds:** browse banks A–H and import/export `.stsnd` files.
 - **Samples:** import WAV audio, browse stock and extended storage, download

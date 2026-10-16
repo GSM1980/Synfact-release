@@ -448,7 +448,7 @@ class Manager:
             S._ok(dev.call(typ, payload), action)
             return {'ok': True}
         if action.startswith('machine_'):
-            if self.profile == 'stock':
+            if action != 'machine_put' and self.profile == 'stock':
                 raise ValueError('Mods files require mods loader V4 or later.')
             path = '/samples/449'
             if action == 'machine_get':
@@ -462,11 +462,13 @@ class Manager:
                 data = base64.b64decode(args['data'], validate=True)
                 info = machine_info(data)
                 parts = F.build_object(449, data, args.get('name', 'MODS'))
+                self.prepare_mods_storage(dev, log)
                 if not S.data_write(dev, path, parts, block=8192):
                     raise RuntimeError('Write not confirmed.')
                 parsed = F.parse_object(S.data_read(dev, path, block=2048, progress=False))
                 if not parsed['crc_ok'] or not parsed['footer_ok'] or parsed['data'] != data:
                     raise RuntimeError('Mods file verification failed.')
+                self.profile = 'v7' if info['format'] == 'SAFE' or info['sites'] == 77 else 'v6'
                 log('Mods file uploaded and verified. Restart your device to load it.')
                 return info
             raise ValueError('Unknown mods action.')
@@ -500,6 +502,42 @@ class Manager:
             log('Messages sent. Check the result and version on your device; installation is not confirmed.')
             return {'frames': len(frames), 'installed': None}
         raise ValueError('Unknown action.')
+
+    def prepare_mods_storage(self, dev, log):
+        # Probe the firmware through raw reads instead of the cached profile:
+        # first installations have neither mods nor an HZFS index to detect.
+        log('Checking extended sample storage before uploading mods...')
+        store = H.Store(dev, S, block=2048, rest=0.05, write_block=8192, write_rest=0, log=log)
+        copies, damaged = [], False
+        for k in H.INDEX_K:
+            if dev.cancelled():
+                raise Cancelled('Transfer cancelled.')
+            try:
+                raw, _ = store.reader.window(k)
+            except Exception as error:
+                if dev.cancelled():
+                    raise Cancelled('Transfer cancelled.') from error
+                raise RuntimeError('Cannot read extended storage. Check the MIDI connection and make sure the Synfact firmware is running after restart.') from error
+            if len(raw) != H.WINDOW:
+                raise RuntimeError('Extended storage is unavailable. Install the Synfact firmware, restart the device, and reconnect before uploading mods.')
+            try:
+                index = H.Index.unpack(raw)
+            except (ValueError, struct.error):
+                index = None
+            copies.append(index)
+            damaged |= raw[:4] == H.MAGIC and index is None
+        if any(copies):
+            log('Existing extended sample storage preserved.')
+            return
+        if damaged:
+            raise RuntimeError('HZFS indexes are damaged or incompatible. Automatic initialization stopped to preserve existing samples.')
+        log('Initializing extended sample storage for first use...')
+        try:
+            H.cmd_init(store)
+        except Exception as error:
+            if dev.cancelled():
+                raise Cancelled('Transfer cancelled.') from error
+            raise
 
     def detect_profile(self, log):
         profile = 'stock'
