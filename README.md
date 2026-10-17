@@ -41,7 +41,7 @@ python build.py "C:\Downloads\Syntakt_OS1.41.syx"
 
 The output is saved in `dist/`:
 
-- `synfact_syx_v0.0.2.syx`: modified firmware.
+- `synfact_syx_v0.0.1.syx`: modified firmware.
 - `synfact_mods_v0.0.2.smz4`: the downloaded machines/mods file, without transformation or repackaging.
 - `build-info.json`: the release version, URL, file sizes, and hashes used for the build.
 
@@ -57,10 +57,10 @@ The output directory must be new. The script validates both files before creatin
 
 Install the two generated files in this order:
 
-1. **Flash the modified firmware first:** send `dist/synfact_syx_v0.0.2.syx` to the Syntakt using the **Drop** tab in [Synfact Transfer](synfact-transfer/readme.md), following the instrument's OS update procedure. Wait for the firmware installation to finish and follow any restart prompts on the instrument before proceeding. A completed file transfer alone does not mean the firmware installation has finished.
+1. **Flash the modified firmware first:** send `dist/synfact_syx_v0.0.1.syx` to the Syntakt using the **Drop** tab in [Synfact Transfer](synfact-transfer/readme.md), following the instrument's OS update procedure. Wait for the firmware installation to finish and follow any restart prompts on the instrument before proceeding. A completed file transfer alone does not mean the firmware installation has finished.
 2. **Transfer the mods file afterwards:** once the modified firmware is running, use the **Drop** tab in Synfact Transfer to send `dist/synfact_mods_v0.0.2.smz4` to the Syntakt. Wait for the transfer and readback verification to complete. **Then restart the Syntakt to load the complete firmware.**
 
-Both steps are required to install this release. If you selected a different build output directory, use the files from that directory instead of `dist/`.
+For a first installation, both steps are required. If Synfact firmware 0.0.1 is already installed, skip step 1: transfer only the 0.0.2 mods file and restart the Syntakt. If you selected a different build output directory, use the files from that directory instead of `dist/`.
 
 ## Pinned release and validation
 
@@ -74,7 +74,7 @@ This is the fixed **Synfact 0.0.2** release for **Syntakt OS 1.41**. It includes
 
 The patch is a zlib-compressed XOR mask. It is applied to the original bytes up to the pinned output length; this is not a source compilation or a modular system. The repository contains the mask and its metadata, without either complete SYX file. The output hash requires exact reproduction of the reference firmware, whose verification preserved sections 1, 2, 4, 5, 6, and 8, the bootloader/bootstrap/updater, and load destinations.
 
-Release 0.0.2 keeps the same firmware bytes as 0.0.1; only its output filename changes. The machines download is saved unchanged under the filename pinned in the manifest. The machines file includes the Sample Manager bugfix for an empty extended sample library (V14r14); the firmware is unchanged. It is downloaded from this release's [Google Drive URL](https://drive.google.com/uc?export=download&id=1FErQPsjDNE0g4oQqLkg-Luhg7iK4H9hw). Its size and SHA-256 are checked: a login page, incomplete download, or replaced file is rejected. If the remote content changes, the build fails until a consistent release is prepared.
+Release 0.0.2 updates only the mods. The firmware bytes and filename remain at 0.0.1. The machines download is saved unchanged under the filename pinned in the manifest. The machines file includes the Sample Manager bugfix for an empty extended sample library (V14r14); the firmware is unchanged. It is downloaded from this release's [Google Drive URL](https://drive.google.com/uc?export=download&id=1FErQPsjDNE0g4oQqLkg-Luhg7iK4H9hw). Its size and SHA-256 are checked: a login page, incomplete download, or replaced file is rejected. If the remote content changes, the build fails until a consistent release is prepared.
 
 The reference release remains experimental: full boot/first-screen acceptance, projects with parameter locks, and complete hardware validation are pending. This build verifies reproduction and integrity; it does not extend that coverage or resolve the outstanding SYSTEM INFO meter issues.
 
@@ -89,10 +89,10 @@ python -m unittest discover -s tests -v
 Maintainers can reproduce the fixed patch and manifest from local reference artifacts:
 
 ```sh
-python tools/make_release_patch.py --original "/path/to/official.syx" --modified "/path/to/synfact_syx_v0.0.2.syx" --machines "/path/to/synfact_mods_v0.0.2.smz4" --machines-url "https://drive.google.com/uc?export=download&id=1FErQPsjDNE0g4oQqLkg-Luhg7iK4H9hw" --output "release-copy"
+python tools/make_release_patch.py --original "/path/to/official.syx" --modified "/path/to/synfact_syx_v0.0.1.syx" --machines "/path/to/synfact_mods_v0.0.2.smz4" --machines-url "https://drive.google.com/uc?export=download&id=1FErQPsjDNE0g4oQqLkg-Luhg7iK4H9hw" --output "release-copy"
 ```
 
-The utility requires the official OS 1.41 and verifies the patch round-trip. Its output names and metadata are fixed to Synfact 0.0.2. It does not compile or certify new firmware.
+The utility requires the official OS 1.41 and verifies the patch round-trip. It produces the Synfact 0.0.2 release with firmware 0.0.1 and mods 0.0.2. It does not compile or certify new firmware.
 
 Files matching `*.syx` and `*.smz4`, `dist/`, and temporary build directories are excluded from Git. Keep originals outside the repository.
 

@@ -45,7 +45,7 @@ def main() -> None:
         "format": 1,
         "version": "0.0.2",
         "original": artifact(original, "Syntakt_OS1.41.syx"),
-        "firmware": artifact(modified, "synfact_syx_v0.0.2.syx"),
+        "firmware": artifact(modified, "synfact_syx_v0.0.1.syx"),
         "machines": {**artifact(machines, "synfact_mods_v0.0.2.smz4"), "url": args.machines_url},
         "patch": artifact(patch, "firmware.xor.zlib"),
         "validation": {
