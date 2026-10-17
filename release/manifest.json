@@ -13,9 +13,9 @@
   },
   "machines": {
     "filename": "synfact_mods_v0.0.1.smz4",
-    "bytes": 310532,
-    "sha256": "df54a8001a813e9d49f08f9055b9a87a37db4b10addb3c7f5ac36f548b7247dc",
-    "url": "https://drive.google.com/uc?export=download&id=1wCP8BkWBFEnbmXpK23rjT6yj8GCKQnWn"
+    "bytes": 310596,
+    "sha256": "3e7f0a65a6a87c1599d8536028f43803a639ed9d7bde4d5f8b87d8594b19ab2c",
+    "url": "https://drive.google.com/uc?export=download&id=1FErQPsjDNE0g4oQqLkg-Luhg7iK4H9hw"
   },
   "patch": {
     "filename": "firmware.xor.zlib",

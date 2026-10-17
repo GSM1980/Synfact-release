@@ -74,7 +74,7 @@ This is the fixed **Synfact 0.0.1** release for **Syntakt OS 1.41**. It includes
 
 The patch is a zlib-compressed XOR mask. It is applied to the original bytes up to the pinned output length; this is not a source compilation or a modular system. The repository contains the mask and its metadata, without either complete SYX file. The output hash requires exact reproduction of the reference firmware, whose verification preserved sections 1, 2, 4, 5, 6, and 8, the bootloader/bootstrap/updater, and load destinations.
 
-The machines file is downloaded from this release's [Google Drive URL](https://drive.google.com/uc?export=download&id=1wCP8BkWBFEnbmXpK23rjT6yj8GCKQnWn). Its size and SHA-256 are checked: a login page, incomplete download, or replaced file is rejected. If the remote content changes, the build fails until a consistent release is prepared.
+The machines file includes the Sample Manager bugfix for an empty extended sample library (V14r14); the firmware is unchanged. It is downloaded from this release's [Google Drive URL](https://drive.google.com/uc?export=download&id=1FErQPsjDNE0g4oQqLkg-Luhg7iK4H9hw). Its size and SHA-256 are checked: a login page, incomplete download, or replaced file is rejected. If the remote content changes, the build fails until a consistent release is prepared.
 
 The reference release remains experimental: full boot/first-screen acceptance, projects with parameter locks, and complete hardware validation are pending. This build verifies reproduction and integrity; it does not extend that coverage or resolve the outstanding SYSTEM INFO meter issues.
 
@@ -89,7 +89,7 @@ python -m unittest discover -s tests -v
 Maintainers can reproduce the fixed patch and manifest from local reference artifacts:
 
 ```sh
-python tools/make_release_patch.py --original "/path/to/official.syx" --modified "/path/to/synfact_syx_v0.0.1.syx" --machines "/path/to/synfact_mods_v0.0.1.smz4" --machines-url "https://drive.google.com/uc?export=download&id=1wCP8BkWBFEnbmXpK23rjT6yj8GCKQnWn" --output "release-copy"
+python tools/make_release_patch.py --original "/path/to/official.syx" --modified "/path/to/synfact_syx_v0.0.1.syx" --machines "/path/to/synfact_mods_v0.0.1.smz4" --machines-url "https://drive.google.com/uc?export=download&id=1FErQPsjDNE0g4oQqLkg-Luhg7iK4H9hw" --output "release-copy"
 ```
 
 The utility requires the official OS 1.41 and verifies the patch round-trip. Its output names and metadata are fixed to Synfact 0.0.1. It does not compile or certify new firmware.
