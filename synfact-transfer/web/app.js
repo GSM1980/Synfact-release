@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 let token=document.querySelector('meta[name="session-token"]').content;
 history.replaceState(null,'',location.pathname);
-const state={connected:false,tab:'drop',category:'projects',bank:'A',rows:[],jobs:[],generation:0};
+const state={connected:false,tab:'drop',category:'projects',bank:'A',sampleBank:'S',rows:[],jobs:[],generation:0};
 const waits=new Map(),selected=new Set(),seenErrors=new Set();
 const transferActions=new Set(['put','get','hz_get','hz_rm','clear','sample_put','machine_put','firmware_put','download_group']);
 let scanning=false,paused=false,serviceOnline=false,modalResolve=null,importing=false,activeTransfer=null,pendingDrops=[];
@@ -108,32 +108,32 @@ async function dropFiles(files){
 }
 $('choose-drop').onclick=()=>$('drop-file').click();$('drop-file').onchange=e=>{dropFiles([...e.target.files]);e.target.value=''};
 $('drop-zone').onkeydown=e=>{if(e.key==='Enter')$('drop-file').click()};
-function bankButtons(){const area=$('banks');area.replaceChildren();for(const bank of 'ABCDEFGH'){const b=document.createElement('button');b.textContent=bank;b.classList.toggle('active',bank===state.bank);b.onclick=()=>{state.bank=bank;bankButtons();refresh()};area.append(b)}}
+function bankButtons(){const area=$('banks'),samples=state.category==='samples',field=samples?'sampleBank':'bank';area.replaceChildren();for(const bank of samples?'SH':'ABCDEFGH'){const b=document.createElement('button');b.textContent=bank;b.classList.toggle('active',bank===state[field]);b.onclick=()=>{state[field]=bank;refresh()};area.append(b)}}
 function path(){return state.category==='projects'?'/projects':'/soundbanks/'+state.bank}
 function completeSlots(entries,count,base){const bySlot=new Map(entries.filter(e=>!e.directory).map(e=>[e.slot,e]));return Array.from({length:count},(_,i)=>{const slot=i+1,e=bySlot.get(slot);return {...e,slot,path:base+'/'+slot,key:base+'/'+slot,name:e?.valid?e.name:'',valid:!!e?.valid,bytes:e?.size||0}})}
 $('category').onchange=e=>{state.category=e.target.value;refresh()};$('refresh').onclick=refresh;$('search').oninput=renderTable;
 async function refresh(){
  const generation=++state.generation;selected.clear();state.rows=[];
- const samples=state.category==='samples';$('banks').hidden=state.category!=='sounds';$('download-selected').disabled=true;
- $('list-label').textContent=samples?'S1-S64 are stock slots. H are samples for slots 65-128 with about 60s time limit.':state.category==='projects'?'128 projects':'Bank '+state.bank+' · 256 slots';
+ const samples=state.category==='samples';$('banks').hidden=state.category==='projects';bankButtons();$('download-selected').disabled=true;
+ $('list-label').textContent=samples?(state.sampleBank==='S'?'Stock samples · S1–S64':'High memory samples'):state.category==='projects'?'128 projects':'Bank '+state.bank+' · 256 slots';
  $('table-head').innerHTML='';$('table-body').innerHTML='';$('empty-state').hidden=false;
  if(!state.connected){$('empty-state').textContent='Connect your device to browse files.';return}
  $('empty-state').textContent='Loading…';
  try{
   if(samples){const library=await task('sample_list');if(generation!==state.generation)return;
    const stock=new Map(library.entries.filter(e=>e.source==='stock').map(e=>[e.slot,e]));
-   state.rows=Array.from({length:64},(_,i)=>{const e=stock.get(i+1);return {...e,source:'stock',slot:i+1,path:'/samples/'+(i+1),key:'stock:'+(i+1),name:e?.name||'',valid:!!e,bytes:e?.bytes||0}});
-   state.rows.push(...library.entries.filter(e=>e.source==='high').map(e=>({...e,valid:true})));
-   if(library.high_error)message('Extended sample storage is unavailable.');
-  }else{if(state.category==='sounds')bankButtons();const result=await task('list',{path:path()});if(generation!==state.generation)return;state.rows=completeSlots(result.entries,state.category==='projects'?128:256,path())}
+   state.rows=state.sampleBank==='S'?Array.from({length:64},(_,i)=>{const e=stock.get(i+1);return {...e,source:'stock',slot:i+1,path:'/samples/'+(i+1),key:'stock:'+(i+1),name:e?.name||'',valid:!!e,bytes:e?.bytes||0}}):library.entries.filter(e=>e.source==='high').map(e=>({...e,valid:true}));
+   if(state.sampleBank==='H'&&library.high_error)message('Extended sample storage is unavailable.');
+  }else{const result=await task('list',{path:path()});if(generation!==state.generation)return;state.rows=completeSlots(result.entries,state.category==='projects'?128:256,path())}
   $('search').value='';renderTable();
  }catch(e){if(generation===state.generation){$('empty-state').hidden=false;$('empty-state').textContent=e.message}}
 }
 function renderTable(){
+ const high=state.category==='samples'&&state.sampleBank==='H';
  const q=$('search').value.toLowerCase(),rows=state.rows.filter(e=>(e.name+' '+e.slot+' '+e.key).toLowerCase().includes(q));
  $('empty-state').hidden=rows.length>0;if(!rows.length)$('empty-state').textContent=state.connected?(q?'No results':'No files'):'Connect your device to browse files.';
- $('table-head').innerHTML='<tr><th class="select-cell"><input id="select-all" type="checkbox" aria-label="Select all"></th><th>Slot</th><th>Name</th><th>Size</th><th></th></tr>';
- $('table-body').innerHTML=rows.map(e=>'<tr data-slot-key="'+esc(e.key)+'" class="'+(selected.has(e.key)?'selected':'')+'"><td class="select-cell"><input type="checkbox" aria-label="Select '+esc(e.name||e.slot)+'" data-select="'+esc(e.key)+'" '+(selected.has(e.key)?'checked':'')+' '+(!e.valid?'disabled':'')+'></td><td class="number">'+(state.category==='samples'?(e.source==='stock'?'S'+e.slot:'H'+e.id):String(e.slot).padStart(3,'0'))+'</td><td class="'+(!e.valid?'empty-slot':'')+'">'+esc(e.name||'—')+'</td><td>'+(e.valid?size(e.bytes||0):'—')+'</td><td class="row-actions">'+(e.valid?'<button data-get="'+esc(e.key)+'">Download</button><button data-remove="'+esc(e.key)+'">Delete</button>':'')+'</td></tr>').join('');
+ $('table-head').innerHTML='<tr><th class="select-cell"><input id="select-all" type="checkbox" aria-label="Select all"></th>'+(high?'':'<th>Slot</th>')+'<th>Name</th><th>Size</th><th></th></tr>';
+ $('table-body').innerHTML=rows.map(e=>'<tr data-slot-key="'+esc(e.key)+'" class="'+(selected.has(e.key)?'selected':'')+'"><td class="select-cell"><input type="checkbox" aria-label="Select '+esc(e.name||e.slot)+'" data-select="'+esc(e.key)+'" '+(selected.has(e.key)?'checked':'')+' '+(!e.valid?'disabled':'')+'></td>'+(high?'':'<td class="number">'+(state.category==='samples'?'S'+e.slot:String(e.slot).padStart(3,'0'))+'</td>')+'<td class="'+(!e.valid?'empty-slot':'')+'">'+esc(e.name||'—')+'</td><td>'+(e.valid?size(e.bytes||0):'—')+'</td><td class="row-actions">'+(e.valid?'<button data-get="'+esc(e.key)+'">Download</button><button data-remove="'+esc(e.key)+'">Delete</button>':'')+'</td></tr>').join('');
  const all=$('select-all');all.checked=rows.some(e=>e.valid)&&rows.filter(e=>e.valid).every(e=>selected.has(e.key));all.onchange=()=>{for(const e of rows.filter(e=>e.valid))all.checked?selected.add(e.key):selected.delete(e.key);renderTable()};
  document.querySelectorAll('[data-select]').forEach(b=>b.onchange=()=>{b.checked?selected.add(b.dataset.select):selected.delete(b.dataset.select);updateSelection();b.closest('tr').classList.toggle('selected',b.checked)});
  document.querySelectorAll('[data-get]').forEach(b=>b.onclick=()=>getFile(state.rows.find(e=>e.key===b.dataset.get)).then(download).catch(e=>message(e.message)));
