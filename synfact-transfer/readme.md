@@ -29,6 +29,19 @@ separate Python, Qt or browser installation.
   samples and delete entries. S1–S64 are stock slots; H entries are samples for
   slots 65–128, with an approximately 60-second playback limit in compatible mods.
 - Automatic device discovery, reconnect controls and queued transfers.
+- **Compact high memory:** in Explore > Samples > H, back up and verify all
+  samples locally, then rebuild them consecutively from the first data block.
+  IDs, names, audio and pool references are preserved. Compaction joins free
+  gaps; it does not reduce the blocks occupied by each sample. Stop playback,
+  close the device sample manager, keep USB connected and restart afterwards.
+  If rebuilding fails or is cancelled, the error shows a retained temporary
+  backup folder. Keep that folder and use **Restore backup** on the same device
+  to retry the complete rebuild. Recovery replaces the high memory library
+  with the backup contents. A successful compaction removes its temporary copy;
+  a successful recovery keeps the selected backup.
+  Project pools support high-memory IDs 1–32767. Each new high-memory sample
+  consumes an ID; deletion does not recycle IDs, and compaction preserves the
+  counter. Transfer refuses new high-memory uploads once that range is exhausted.
 - English interface and a **Support this project** button opening Ko-fi in the
   default browser.
 

@@ -22,6 +22,7 @@ import hzfs as H
 import emmc_dump as D
 import files_host as F
 import elektron_object as E
+import compaction
 
 
 class Cancelled(S.DeviceError):
@@ -342,6 +343,10 @@ class Manager:
             store = H.Store(dev, S, block=2048, rest=0.0, write_block=8192, write_rest=0, log=log)
             if action == 'hz_init':
                 H.cmd_init(store)
+            elif action in ('hz_compact', 'hz_restore'):
+                if action == 'hz_restore':
+                    return compaction.restore(store, args['folder'], dev.report, cancelled)
+                return compaction.compact(store, dev.report, cancelled)
             elif action == 'hz_list':
                 index, copies = store.current()
                 issues = H.problems(index)
@@ -354,6 +359,10 @@ class Manager:
                         'largest': H.largest_hole(index, index.windows) * H.WINDOW,
                         'copies': [c.seq if c else None for c in copies]}
             elif action == 'hz_put':
+                index, _ = store.current()
+                if not 1 <= index.next_id <= 0x7fff:
+                    raise ValueError('High memory sample IDs are exhausted (maximum 32767). '
+                                     'Deleting or compacting samples does not reset IDs.')
                 data = base64.b64decode(args['data'], validate=True)
                 with tempfile.TemporaryDirectory() as td:
                     wav = Path(td) / 'sample.wav'

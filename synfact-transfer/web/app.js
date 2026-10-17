@@ -4,7 +4,7 @@ let token=document.querySelector('meta[name="session-token"]').content;
 history.replaceState(null,'',location.pathname);
 const state={connected:false,tab:'drop',category:'projects',bank:'A',sampleBank:'S',rows:[],jobs:[],generation:0};
 const waits=new Map(),selected=new Set(),seenErrors=new Set();
-const transferActions=new Set(['put','get','hz_get','hz_rm','clear','sample_put','machine_put','firmware_put','download_group']);
+const transferActions=new Set(['put','get','hz_get','hz_rm','hz_compact','hz_restore','clear','sample_put','machine_put','firmware_put','download_group']);
 let scanning=false,paused=false,serviceOnline=false,modalResolve=null,importing=false,activeTransfer=null,pendingDrops=[];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const size=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';
@@ -24,7 +24,7 @@ async function api(path,body,retry=true){
  if(!r.ok)throw Error(result.error||'Operation failed.');return result;
 }
 function showTransfer(action,name){
- const titles={get:'Downloading',hz_get:'Downloading',download_group:'Downloading files',put:'Uploading',sample_put:'Uploading sample',machine_put:'Uploading mods',firmware_put:'Uploading firmware',clear:'Deleting',hz_rm:'Deleting sample'};
+ const titles={get:'Downloading',hz_get:'Downloading',hz_compact:'Compacting high memory',hz_restore:'Restoring high memory',download_group:'Downloading files',put:'Uploading',sample_put:'Uploading sample',machine_put:'Uploading mods',firmware_put:'Uploading firmware',clear:'Deleting',hz_rm:'Deleting sample'};
  $('transfer-title').textContent=titles[action]||'Transferring';$('transfer-file').textContent=name||'';
  $('transfer-progress').removeAttribute('value');$('transfer-detail').textContent='Preparing transfer…';
  $('transfer-cancel').disabled=false;$('transfer-cancel').textContent='Cancel';
@@ -116,6 +116,8 @@ $('category').onchange=e=>{state.category=e.target.value;refresh()};$('refresh')
 async function refresh(){
  const generation=++state.generation;selected.clear();state.rows=[];
  const samples=state.category==='samples';$('banks').hidden=state.category==='projects';bankButtons();$('download-selected').disabled=true;
+ for(const id of ['compact','restore-backup']){$(id).hidden=!samples||state.sampleBank!=='H';$(id).disabled=true}
+ $('restore-backup').disabled=!state.connected||!['v6','v7'].includes(state.profile);
  $('list-label').textContent=samples?(state.sampleBank==='S'?'Stock samples · S1–S64':'High memory samples'):state.category==='projects'?'128 projects':'Bank '+state.bank+' · 256 slots';
  $('table-head').innerHTML='';$('table-body').innerHTML='';$('empty-state').hidden=false;
  if(!state.connected){$('empty-state').textContent='Connect your device to browse files.';return}
@@ -123,6 +125,7 @@ async function refresh(){
  try{
   if(samples){const library=await task('sample_list');if(generation!==state.generation)return;
    if(state.sampleBank==='H')$('list-label').textContent=Number.isFinite(library.total)?'High memory · '+capacity(library.used)+' / '+capacity(library.total)+' used · '+capacity(library.free)+' free':'High memory · Storage unavailable';
+   $('compact').disabled=!Number.isFinite(library.total);
    const stock=new Map(library.entries.filter(e=>e.source==='stock').map(e=>[e.slot,e]));
    state.rows=state.sampleBank==='S'?Array.from({length:64},(_,i)=>{const e=stock.get(i+1);return {...e,source:'stock',slot:i+1,path:'/samples/'+(i+1),key:'stock:'+(i+1),name:e?.name||'',valid:!!e,bytes:e?.bytes||0}}):library.entries.filter(e=>e.source==='high').map(e=>({...e,valid:true}));
    if(state.sampleBank==='H'&&library.high_error)message('Extended sample storage is unavailable.');
@@ -144,6 +147,18 @@ function renderTable(){
 function updateSelection(){$('download-selected').disabled=!selected.size;$('download-selected').textContent=selected.size?'Download ('+selected.size+')':'Download'}
 function fileArgs(e){return {path:e.path,id:e.id,source:e.source,name:e.name,bytes:e.bytes}}
 function getFile(e){return task(e.source==='high'?'hz_get':'get',fileArgs(e))}
+async function rebuildHigh(restore=false){
+ if(importing||!state.connected)return;
+ const fields=restore?'<p>This replaces the connected device’s high memory library with the saved compaction backup. Use the same device.</p><label>Backup folder<input name="folder" type="text" required></label>':'<p>Download and verify all high memory samples, then rewrite them consecutively. Sample IDs and pool assignments are preserved. This joins free space; occupied space stays the same.</p>';
+ const result=await ask(restore?'Restore high memory backup':'Compact high memory',fields+'<p>Stop playback and leave the sample manager closed. Keep the device connected until finished. Interruption during rebuilding requires Restore backup using the retained folder. Restart the device afterwards.</p>',restore?'Restore':'Compact');
+ if(!result)return;importing=true;
+ try{
+  const done=await task(restore?'hz_restore':'hz_compact',{...result,confirm:true});
+  await ask('High memory ready','<p>'+done.count+' samples verified. Restart the device before using the sample pools.</p>'+(done.backup?'<p>Backup retained at:</p><p>'+esc(done.backup)+'</p>':''),'OK');
+ }catch(e){await ask('High memory operation stopped','<p>'+esc(e.message)+'</p>','OK')}
+ finally{importing=false;refresh()}
+}
+$('compact').onclick=()=>rebuildHigh();$('restore-backup').onclick=()=>rebuildHigh(true);
 $('download-selected').onclick=async()=>{try{const rows=state.rows.filter(e=>selected.has(e.key)&&e.valid);await download(rows.length===1?await getFile(rows[0]):await task('download_group',{items:rows.map(fileArgs)}))}catch(e){message(e.message)}};
 async function removeRow(e){const result=await ask('Delete file','<p>'+esc(e.name)+'</p>','Delete');if(!result)return;try{await task(e.source==='high'?'hz_rm':'clear',{...fileArgs(e),confirm:true});refresh()}catch(error){message(error.message)}}
 $('add').onclick=async()=>{

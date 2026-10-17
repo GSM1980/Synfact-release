@@ -17,7 +17,7 @@ import webbrowser
 from core import Manager, Cancelled, ports
 
 ROOT = Path(__file__).resolve().parent
-WRITE_ACTIONS = {'put', 'clear', 'copy', 'move', 'swap', 'hz_put', 'hz_rm', 'hz_init', 'machine_put', 'sysex_send', 'sample_put', 'firmware_put'}
+WRITE_ACTIONS = {'put', 'clear', 'copy', 'move', 'swap', 'hz_put', 'hz_rm', 'hz_init', 'hz_compact', 'hz_restore', 'machine_put', 'sysex_send', 'sample_put', 'firmware_put'}
 ACTIONS = WRITE_ACTIONS | {'connect', 'disconnect', 'list', 'get', 'hz_list', 'hz_get', 'hz_check', 'machine_get', 'sample_list', 'download_group'}
 
 
