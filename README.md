@@ -15,6 +15,7 @@ A mod system for the Elektron Syntakt.
 
 Planned future modifications, not included in the current release:
 
+- **Full stereo sampling**
 - **FM TONE port from Digitone MK1.**
 - **Polyphonic mode using voices from other tracks**, with a slave mode for each linked track.
 - **Master compressor.**
