@@ -105,3 +105,7 @@ Project code and documentation are licensed under the [MIT License](LICENSE), us
 Standalone desktop transfer application, version 0.0.1.
 
 [Source code, features and build instructions for Windows, Mac Intel and Apple Silicon](synfact-transfer/readme.md).
+
+## Known issues
+
+- **Sample manager:** Once installed, if no sample has been loaded into the +Drive's extended memory, the sample manager throws an exception on startup. Until this bug is fixed, simply transfer a single sample using Synfact Transfer, or record/resample anything and save the result. As long as there is at least one sample in the +Drive's extended memory, the sample manager will boot up fine.
