@@ -8,6 +8,7 @@ const transferActions=new Set(['put','get','hz_get','hz_rm','clear','sample_put'
 let scanning=false,paused=false,serviceOnline=false,modalResolve=null,importing=false,activeTransfer=null,pendingDrops=[];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const size=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';
+const capacity=n=>(n/1048576).toFixed(1)+' MB';
 function message(text){$('message').textContent=text;$('message').hidden=false;clearTimeout(message.timer);message.timer=setTimeout(()=>$('message').hidden=true,8000)}
 async function api(path,body,retry=true){
  let r;
@@ -121,6 +122,7 @@ async function refresh(){
  $('empty-state').textContent='Loading…';
  try{
   if(samples){const library=await task('sample_list');if(generation!==state.generation)return;
+   if(state.sampleBank==='H')$('list-label').textContent=Number.isFinite(library.total)?'High memory · '+capacity(library.used)+' / '+capacity(library.total)+' used · '+capacity(library.free)+' free':'High memory · Storage unavailable';
    const stock=new Map(library.entries.filter(e=>e.source==='stock').map(e=>[e.slot,e]));
    state.rows=state.sampleBank==='S'?Array.from({length:64},(_,i)=>{const e=stock.get(i+1);return {...e,source:'stock',slot:i+1,path:'/samples/'+(i+1),key:'stock:'+(i+1),name:e?.name||'',valid:!!e,bytes:e?.bytes||0}}):library.entries.filter(e=>e.source==='high').map(e=>({...e,valid:true}));
    if(state.sampleBank==='H'&&library.high_error)message('Extended sample storage is unavailable.');

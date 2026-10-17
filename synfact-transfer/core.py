@@ -283,11 +283,11 @@ class Manager:
                                     'bytes': e.get('size', 0), 'frames': None})
             result = {'entries': entries, 'stock_used': len(entries), 'stock_total': 64,
                       'high_available': self.profile in ('v6', 'v7'), 'high_error': None,
-                      'free': None, 'sequence': None}
+                      'free': None, 'used': None, 'total': None, 'sequence': None}
             if result['high_available']:
                 try:
                     high = self.run('hz_list', {}, log, cancelled)
-                    result.update({k: high[k] for k in ('free', 'sequence', 'largest', 'copies')})
+                    result.update({k: high[k] for k in ('free', 'used', 'total', 'sequence', 'largest', 'copies')})
                     entries.extend({**e, 'source': 'high', 'key': 'high:' + str(e['id'])} for e in high['entries'])
                 except Cancelled:
                     raise
@@ -347,7 +347,10 @@ class Manager:
                 issues = H.problems(index)
                 if issues:
                     raise ValueError('Inconsistent index: ' + '; '.join(issues))
-                return {'entries': index.entries, 'sequence': index.seq, 'free': H.free_blocks(index, index.windows) * H.WINDOW,
+                total = (index.windows - H.DATA_FIRST_K) * H.WINDOW
+                free = H.free_blocks(index, index.windows) * H.WINDOW
+                return {'entries': index.entries, 'sequence': index.seq, 'free': free,
+                        'total': total, 'used': total - free,
                         'largest': H.largest_hole(index, index.windows) * H.WINDOW,
                         'copies': [c.seq if c else None for c in copies]}
             elif action == 'hz_put':
