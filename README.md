@@ -108,4 +108,4 @@ Standalone desktop transfer application, version 0.0.1.
 
 ## Known issues
 
-- **Sample manager:** Once installed, if no sample has been loaded into the +Drive's extended memory, the sample manager throws an exception on startup. Until this bug is fixed, simply transfer a single sample using Synfact Transfer, or record/resample anything and save the result. As long as there is at least one sample in the +Drive's extended memory, the sample manager will boot up fine.
+- **Sample manager:** Once installed, if no sample has been loaded into the +Drive's extended memory, the sample manager throws an exception. Until this bug is fixed, simply transfer a single sample using Synfact Transfer, or record/resample anything and save the result. As long as there is at least one sample in the +Drive's extended memory, the sample manager will start up fine.
