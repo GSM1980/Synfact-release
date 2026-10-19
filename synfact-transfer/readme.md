@@ -19,6 +19,8 @@ separate Python, Qt or browser installation.
 
 - Add Digitone `.dnsnd` sound import with local conversion to FM TONE. Chorus
   and arpeggiator data are ignored.
+- Add high-memory compaction for long samples, joining free gaps while preserving
+  sample IDs, names, audio and project pool references.
 - Improve MIDI connection, disconnection and automatic reconnection, including
   recovery from blocked driver calls and cancellation of pending transfers.
 - Use red tones for notification banners to match the application palette.
