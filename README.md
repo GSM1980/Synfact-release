@@ -102,7 +102,10 @@ Project code and documentation are licensed under the [MIT License](LICENSE), us
 
 ## Synfact Transfer
 
-Standalone desktop transfer application, version 0.0.1.
+Standalone desktop transfer application, version 0.0.2. Adds Digitone `.dnsnd`
+sound import with local conversion to FM TONE, plus more robust MIDI reconnection.
+See the [Synfact Transfer changelog](synfact-transfer/readme.md#changelog) for the
+version history: 0.0.1 is the initial release; 0.0.2 adds Digitone sound support.
 
 [Source code, features and build instructions for Windows, Mac Intel and Apple Silicon](synfact-transfer/readme.md).
 

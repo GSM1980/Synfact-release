@@ -23,13 +23,15 @@ import emmc_dump as D
 import files_host as F
 import elektron_object as E
 import compaction
+import digitone
+from midi_io import MidiDevice, ConnectionLost, ports
 
 
 class Cancelled(S.DeviceError):
     pass
 
 
-def validate_object(obj):
+def validate_object(obj, product=13):
     if len(obj) < 43 or obj[:4] != bytes.fromhex('ac11d303'):
         raise ValueError('Invalid device object.')
     body, footer = obj[31:-12], obj[-12:]
@@ -41,19 +43,30 @@ def validate_object(obj):
         raise ValueError('Invalid declared size.')
     if obj[29]:
         E.block_chain(body)
-    if int.from_bytes(obj[7:9], 'big') != 13:
+    if int.from_bytes(obj[7:9], 'big') != product:
         raise ValueError('This object is not compatible with the connected device.')
     return obj
 
 
-def read_package(data):
+def read_package(data, *, allow_digitone=False, index=0, log=lambda text: None):
     if data[:2] != b'PK':
         return {}, validate_object(data)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         if sum(i.file_size for i in z.infolist()) > 64 * 1024 * 1024:
             raise ValueError('Package is too large.')
         manifest = json.loads(z.read('manifest.json'))
-        if not set(manifest.get('ProductType', [])) & {'30'}:
+        products = set(manifest.get('ProductType', []))
+        if allow_digitone and products & {'20', '28'} and '30' not in products:
+            if manifest.get('FileType') != 'Sound':
+                raise ValueError('Only Digitone sound files can be converted.')
+            obj = validate_object(z.read(manifest['Payload']), product=9)
+            if len(obj) > 65536 or S.u32(obj, 25) not in (0x11B, 0x11A, 0x12E):
+                raise ValueError('Invalid Digitone sound object size.')
+            obj, notes = digitone.convert(obj, index)
+            for note in notes:
+                log(note)
+            return {**manifest, 'ProductType': ['30']}, validate_object(obj)
+        if not products & {'30'}:
             raise ValueError('Incompatible package type.')
         return manifest, validate_object(z.read(manifest['Payload']))
 
@@ -149,34 +162,6 @@ def machine_info(data):
             'sha256': hashlib.sha256(data).hexdigest(), 'path': '/samples/449'}
 
 
-def ports():
-    import rtmidi
-    mi, mo = rtmidi.MidiIn(), rtmidi.MidiOut()
-    try:
-        return {'inputs': mi.get_ports(), 'outputs': mo.get_ports()}
-    finally:
-        mi.delete()
-        mo.delete()
-
-
-class MidiDevice(S.Syntakt):
-    """Select exact input and output independently; reuse tested WinMM RPC framing."""
-    def __init__(self, input_name, output_name):
-        import rtmidi
-        self.trace, self.timeout, self.seq, self._pending = False, 5.0, 1, None
-        self.mi, self.mo = rtmidi.MidiIn(), rtmidi.MidiOut()
-        try:
-            ins, outs = self.mi.get_ports(), self.mo.get_ports()
-            if hasattr(self.mi, 'set_buffer_size'):
-                self.mi.set_buffer_size(16384, 16)
-            self.mi.open_port(ins.index(input_name))
-            self.mo.open_port(outs.index(output_name))
-            self.mi.ignore_types(sysex=False, timing=True, active_sense=True)
-        except Exception:
-            self.close()
-            raise RuntimeError('Cannot open the MIDI ports. Close other MIDI applications.')
-
-
 class Transport:
     def __init__(self, dev, log, cancelled, expected=0):
         self.dev, self.log, self.cancelled = dev, log, cancelled
@@ -211,6 +196,25 @@ class Manager:
         self.dev, self.mode, self.profile, self.identity = None, 'disconnected', 'stock', ''
         self.downloads = {}
         self.input_port, self.output_port = '', ''
+        self.candidate = None
+
+    def interrupt(self):
+        for device in (self.dev, self.candidate):
+            if device is not None and hasattr(device, 'interrupt'):
+                device.interrupt()
+
+    def disconnect(self):
+        device = self.dev
+        self.dev, self.mode, self.profile, self.identity = None, 'disconnected', 'stock', ''
+        self.input_port, self.output_port = '', ''
+        if device is not None:
+            device.close()
+
+    def connection_failed(self):
+        if self.dev is None:
+            return False
+        interrupted = getattr(self.dev, 'interrupted', None)
+        return getattr(self.dev, 'failed', False) or (interrupted is not None and interrupted.is_set())
 
     def status(self):
         return {'connected': self.dev is not None, 'mode': self.mode, 'profile': self.profile,
@@ -220,8 +224,11 @@ class Manager:
         if action == 'connect':
             if self.dev:
                 raise ValueError('Disconnect the current device first.')
-            candidate = MidiDevice(args['input'], args['output'])
+            candidate = self.candidate = MidiDevice(args['input'], args['output'])
             try:
+                candidate.open()
+                if cancelled():
+                    raise Cancelled('Connection cancelled.')
                 rx = candidate.call(1)
                 if not rx or len(rx) < 7:
                     raise RuntimeError('The device did not respond.')
@@ -243,12 +250,12 @@ class Manager:
                 return self.status()
             except BaseException:
                 candidate.close()
-                self.dev = None
+                self.disconnect()
                 raise
+            finally:
+                self.candidate = None
         if action == 'disconnect':
-            if self.dev:
-                self.dev.close()
-            self.dev, self.mode, self.identity = None, 'disconnected', ''
+            self.disconnect()
             return self.status()
         if not self.dev:
             raise RuntimeError('Connect your device first.')
@@ -422,7 +429,8 @@ class Manager:
                         raise ValueError('Stock samples support up to 5 seconds. Use extended storage for longer samples.')
                     parts = S.build_sample(pcm, int(path.rsplit('/', 1)[1]), args.get('name', 'SAMPLE'))
             else:
-                manifest, obj = read_package(data)
+                manifest, obj = read_package(data, allow_digitone=path.startswith('/soundbanks/'),
+                                             index=int(path.rsplit('/', 1)[1]) - 1, log=log)
                 expected = 'Project' if path.startswith('/projects/') else 'Sound'
                 if not manifest or manifest.get('FileType') != expected:
                     raise ValueError('The file type does not match the destination.')
@@ -507,7 +515,7 @@ class Manager:
             for i, frame in enumerate(frames):
                 if cancelled():
                     raise Cancelled('SysEx transfer cancelled. Check the device status.')
-                self.dev.mo.send_message(list(frame))
+                self.dev.send_message(list(frame))
                 time.sleep(0.08)
                 if i % 16 == 0:
                     log(f'SysEx: {i + 1}/{len(frames)} messages sent')
@@ -560,6 +568,8 @@ class Manager:
             if parsed['crc_ok'] and parsed['footer_ok']:
                 info = machine_info(parsed['data'])
                 profile = 'v7' if info['format'] == 'SAFE' or info['sites'] == 77 else 'v4'
+        except ConnectionLost:
+            raise
         except Exception:
             pass
         try:
@@ -567,6 +577,8 @@ class Manager:
             store.current()
             if profile != 'v7':
                 profile = 'v6'
+        except ConnectionLost:
+            raise
         except Exception:
             pass
         return profile

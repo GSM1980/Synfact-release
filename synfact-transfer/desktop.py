@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sys
 import threading
+import multiprocessing
 
 if sys.stdout is None:
     sys.stdout = io.StringIO()
@@ -24,7 +25,7 @@ def main():
     QLocale.setDefault(QLocale(QLocale.Language.English))
     application = QApplication(sys.argv[:1])
     application.setApplicationName('Synfact Transfer')
-    application.setApplicationVersion('0.0.1')
+    application.setApplicationVersion('0.0.2')
     application.setOrganizationName('Synfact')
     server = make_server(0)
     serving = threading.Thread(target=server.serve_forever, daemon=True)
@@ -57,8 +58,8 @@ def main():
                 extensions, title, file_filter = {'.wav'}, 'Choose WAV samples', 'WAV audio (*.wav *.WAV)'
             elif accepted & {'.stprj'}:
                 extensions, title, file_filter = {'.stprj'}, 'Choose project', 'Project files (*.stprj *.STPRJ)'
-            elif accepted & {'.stsnd'}:
-                extensions, title, file_filter = {'.stsnd'}, 'Choose sound', 'Sound files (*.stsnd *.STSND)'
+            elif accepted & {'.stsnd', '.dnsnd'}:
+                extensions, title, file_filter = {'.stsnd', '.dnsnd'}, 'Choose sound', 'Sound files (*.stsnd *.STSND *.dnsnd *.DNSND)'
             else:
                 extensions, title, file_filter = {'.syx', '.smz4'}, 'Choose firmware or mods', 'Firmware and mods (*.syx *.SYX *.smz4 *.SMZ4)'
             options = QFileDialog.Option.DontUseNativeDialog
@@ -108,7 +109,7 @@ def main():
         def __init__(self):
             super().__init__()
             self.closing = self.finished = False
-            self.setWindowTitle('Synfact Transfer 0.0.1')
+            self.setWindowTitle('Synfact Transfer 0.0.2')
             self.resize(1120, 780)
             self.setMinimumSize(800, 600)
             self.setWindowIcon(QIcon(str(Path(__file__).parent / 'assets' / 'synfact.svg')))
@@ -182,4 +183,5 @@ def main():
 
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()
     raise SystemExit(main())

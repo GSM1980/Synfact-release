@@ -1,4 +1,4 @@
-# Synfact Transfer 0.0.1
+# Synfact Transfer 0.0.2
 
 Synfact Transfer is a desktop application for managing local device transfers
 over USB MIDI. It provides a desktop window, file selection dialogs and a modal
@@ -13,6 +13,20 @@ The build scripts bundle Python, Qt and the interface engine into a standalone
 application. Once that package has been built, running it does not require a
 separate Python, Qt or browser installation.
 
+## Changelog
+
+### 0.0.2
+
+- Add Digitone `.dnsnd` sound import with local conversion to FM TONE. Chorus
+  and arpeggiator data are ignored.
+- Improve MIDI connection, disconnection and automatic reconnection, including
+  recovery from blocked driver calls and cancellation of pending transfers.
+- Use red tones for notification banners to match the application palette.
+
+### 0.0.1
+
+- Initial release of Synfact Transfer.
+
 ## Features
 
 - **Drop:** upload firmware (`.syx`) or mods (`.smz4`). Current SAFE envelopes
@@ -24,11 +38,21 @@ separate Python, Qt or browser installation.
   or damaged HZFS indexes stop the upload. Run the modified firmware and finish
   its restart procedure before uploading mods.
 - **Projects:** browse 128 slots and import/export `.stprj` files.
-- **Sounds:** browse banks A–H and import/export `.stsnd` files.
+- **Sounds:** browse banks A–H and import/export `.stsnd` files. Import Digitone
+  `.dnsnd` sounds using Add file or drag and drop in Sounds; they are converted
+  locally to FM TONE before upload. Compatible Synfact firmware and FM TONE mods
+  are required. Digitone sound record versions 1–6 are supported. Chorus and
+  arpeggiator data are ignored. Ratio offsets, amp drive and velocity/controller
+  assignments are not imported; unsupported LFO destinations become none.
+  Filters and effects may sound different. Conversion notes appear in the job log.
 - **Samples:** import WAV audio, browse stock and extended storage, download
   samples and delete entries. S1–S64 are stock slots; H entries are samples for
   slots 65–128, with an approximately 60-second playback limit in compatible mods.
-- Automatic device discovery, reconnect controls and queued transfers.
+- Automatic device discovery, reconnect controls and queued transfers. MIDI driver
+  calls run in an isolated process with deadlines, so USB removal or a blocked
+  driver cannot hold up the desktop interface. Disconnect cancels the active job
+  and queued operations. Connection loss clears the session; automatic discovery
+  retries with a short backoff. Interrupted transfers must be submitted again.
 - **Compact high memory:** in Explore > Samples > H, back up and verify all
   samples locally, then rebuild them consecutively from the first data block.
   IDs, names, audio and pool references are preserved. Compaction joins free
@@ -72,7 +96,7 @@ The ZIP contains a complete app bundle; do not copy only its executable.
 
 Connect the device over USB MIDI and close other applications using its MIDI
 ports. Device discovery is automatic. Uploads require confirmation. Closing
-the app cancels pending jobs and waits for the active device request to return.
+the app cancels pending jobs and interrupts active MIDI requests.
 There is no demo mode, rename action or sample pool editor in this version.
 
 ## Build requirements
@@ -205,10 +229,10 @@ when the pinned binary wheels are available.
 
 | Build | Application | Distribution |
 | --- | --- | --- |
-| Windows portable | `dist/SynfactTransfer/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.1-Windows-AMD64.zip` |
-| Windows single file | `dist/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.1-Windows-AMD64-single.zip` |
-| Mac Apple Silicon | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.1-macOS-arm64.zip` |
-| Mac Intel | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.1-macOS-x86_64.zip` |
+| Windows portable | `dist/SynfactTransfer/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.2-Windows-AMD64.zip` |
+| Windows single file | `dist/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.2-Windows-AMD64-single.zip` |
+| Mac Apple Silicon | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.2-macOS-arm64.zip` |
+| Mac Intel | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.2-macOS-x86_64.zip` |
 
 Close the running app before rebuilding into the same directory, especially on
 Windows, where loaded Qt libraries cannot be replaced. Temporary build files
@@ -232,9 +256,11 @@ loopback-only API with a random session token; `core.py` performs serialized
 device operations. `web/` contains the interface, `assets/` its icon, and
 `vendor/` the existing device format and transport helpers.
 
-Windows builds have been used for manual UI iterations. Automated tests have
-intentionally not been rerun during these iterations. Old test and validation
-artifacts are not included in this source snapshot. macOS build scripts are
+Offline transfer tests cover Digitone conversion, MIDI connection lifecycle,
+blocked driver recovery, mods installation and sample compaction. Run them from
+the repository root with `python -m unittest discover -s tests -p 'test_transfer*.py'`.
+Connection UI checks run with `node tests/test_transfer_connection_ui.js`.
+Windows builds have been used for manual UI iterations. macOS build scripts are
 provided, but current macOS binaries have not been compiled or validated here.
 
 ## License and support

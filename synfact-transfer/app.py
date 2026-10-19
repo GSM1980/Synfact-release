@@ -15,6 +15,7 @@ import uuid
 import webbrowser
 
 from core import Manager, Cancelled, ports
+from midi_io import ConnectionLost, stop_ports
 
 ROOT = Path(__file__).resolve().parent
 WRITE_ACTIONS = {'put', 'clear', 'copy', 'move', 'swap', 'hz_put', 'hz_rm', 'hz_init', 'hz_compact', 'hz_restore', 'machine_put', 'sysex_send', 'sample_put', 'firmware_put'}
@@ -44,6 +45,7 @@ class Service:
         self.manager, self.jobs, self.lock = Manager(), {}, threading.RLock()
         # At most 32 user jobs; reserve one extra slot for the shutdown sentinel.
         self.queue, self.closed = queue.Queue(maxsize=33), False
+        self.last_probe = 0
         self.worker = threading.Thread(target=self.work, daemon=True)
         self.worker.start()
 
@@ -55,6 +57,9 @@ class Service:
         with self.lock:
             if self.closed:
                 raise RuntimeError('The application is closing.')
+            if action == 'disconnect':
+                self.cancel_pending()
+                self.manager.interrupt()
             active = sum(j['status'] in ('queued', 'running') for j in self.jobs.values())
             if active >= 32:
                 raise ValueError('The transfer queue is full.')
@@ -80,11 +85,20 @@ class Service:
 
     def work(self):
         while True:
-            item = self.queue.get()
+            try:
+                item = self.queue.get(timeout=0.5)
+            except queue.Empty:
+                # Probe only between jobs, never interleave RPCs with a transfer.
+                if self.manager.dev and time.monotonic() - self.last_probe >= 2:
+                    self.last_probe = time.monotonic()
+                    try:
+                        self.manager.dev.call(1, timeout=1)
+                    except Exception:
+                        self.connection_lost()
+                continue
             if item is None:
                 try:
-                    if self.manager.dev:
-                        self.manager.dev.close()
+                    self.manager.disconnect()
                 finally:
                     self.queue.task_done()
                 break
@@ -100,6 +114,8 @@ class Service:
                 with contextlib.redirect_stdout(logger):
                     result = self.manager.run(action, args, logger.callback, lambda: job['cancel'])
                     logger.flush()
+                    if self.manager.connection_failed():
+                        raise ConnectionLost('Device disconnected during the operation.')
                 with self.lock:
                     job['result'], job['status'] = result, 'done'
             except Cancelled as error:
@@ -107,9 +123,42 @@ class Service:
                     job['status'], job['error'] = 'cancelled', str(error)
             except (Exception, SystemExit) as error:
                 with self.lock:
-                    job['status'], job['error'] = 'error', str(error)
+                    job['status'], job['error'] = ('cancelled' if job['cancel'] else 'error'), str(error)
             finally:
+                if self.manager.connection_failed():
+                    self.connection_lost()
                 self.queue.task_done()
+
+    def cancel_pending(self):
+        # Caller owns the service lock. Never replay queued writes after USB loss.
+        for job in self.jobs.values():
+            if job['status'] in ('queued', 'running') and job['action'] != 'disconnect':
+                job['cancel'] = True
+                if job['status'] == 'queued':
+                    job['status'], job['error'] = 'cancelled', 'Connection closed. Submit the operation again.'
+        retained = []
+        while True:
+            try:
+                item = self.queue.get_nowait()
+            except queue.Empty:
+                break
+            if item is None or item[1] == 'disconnect':
+                retained.append(item)
+            self.queue.task_done()
+        for item in retained:
+            self.queue.put_nowait(item)
+
+    def cancel(self, key):
+        with self.lock:
+            job = self.jobs[key]
+            job['cancel'] = True
+            if job['status'] == 'running':
+                self.manager.interrupt()
+
+    def connection_lost(self):
+        with self.lock:
+            self.cancel_pending()
+        self.manager.disconnect()
 
     def snapshot(self):
         with self.lock:
@@ -120,9 +169,9 @@ class Service:
             if self.closed:
                 return
             self.closed = True
-            for job in self.jobs.values():
-                if job['status'] in ('queued', 'running'):
-                    job['cancel'] = True
+            self.cancel_pending()
+            self.manager.interrupt()
+            stop_ports()
             self.queue.put_nowait(None)
 
     def stop(self):
@@ -131,7 +180,7 @@ class Service:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'SynfactTransfer/0.0.1'
+    server_version = 'SynfactTransfer/0.0.2'
 
     def log_message(self, *_):
         pass
@@ -217,8 +266,7 @@ class Handler(BaseHTTPRequestHandler):
                 key = self.server.service.submit(action, args)
                 return self.respond(202, {'id': key})
             if path == '/api/cancel':
-                with self.server.service.lock:
-                    self.server.service.jobs[args['id']]['cancel'] = True
+                self.server.service.cancel(args['id'])
                 return self.respond(200, {'ok': True})
             return self.respond(404, {'error': 'Route not found.'})
         except PermissionError as error:

@@ -6,6 +6,7 @@ const state={connected:false,tab:'drop',category:'projects',bank:'A',sampleBank:
 const waits=new Map(),selected=new Set(),seenErrors=new Set();
 const transferActions=new Set(['put','get','hz_get','hz_rm','hz_compact','hz_restore','clear','sample_put','machine_put','firmware_put','download_group']);
 let scanning=false,paused=false,serviceOnline=false,modalResolve=null,importing=false,activeTransfer=null,pendingDrops=[];
+let nextScan=0,connectionFailures=0;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const size=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';
 const capacity=n=>(n/1048576).toFixed(1)+' MB';
@@ -67,12 +68,12 @@ async function tick(){
    if(j.status==='error'&&!seenErrors.has(j.id)){seenErrors.add(j.id);message(j.error)}
   }
   if(changed&&s.connected){if(state.tab==='explore')refresh();if(pendingDrops.length){const files=pendingDrops;pendingDrops=[];dropFiles(files)}}
-  if(changed&&!s.connected){state.rows=[];renderTable()}
+  if(changed&&!s.connected){state.generation++;selected.clear();state.rows=[];renderTable();for(const id of ['compact','restore-backup'])$(id).disabled=true}
  }catch(e){serviceOnline=false;state.connected=false;$('connect-status').textContent=e.message;for(const [id,w]of waits){w.reject(e);waits.delete(id)}}
  finally{setTimeout(tick,200)}
 }
 async function scan(){
- if(scanning||paused||!serviceOnline)return;scanning=true;
+ if(scanning||paused||!serviceOnline||Date.now()<nextScan)return;scanning=true;
  try{
   const p=await api('ports');
   if(state.connected){if((state.input&&!p.inputs.includes(state.input))||(state.output&&!p.outputs.includes(state.output)))await task('disconnect')}
@@ -81,10 +82,11 @@ async function scan(){
    const match=n=>/syntakt/i.test(n);const input=p.inputs.find(match),output=p.outputs.find(match);
    if(input&&output){$('connect-status').textContent='Connecting…';await task('connect',{input,output,profile:'auto'})}
   }
- }catch(e){message(e.message);paused=true;$('resume').hidden=false}
+  connectionFailures=0;nextScan=0;
+ }catch(e){connectionFailures++;nextScan=Date.now()+Math.min(10000,1000*connectionFailures);if(connectionFailures===1)message(e.message);$('resume').hidden=false}
  finally{scanning=false}
 }
-$('resume').onclick=()=>{paused=false;scan()};
+$('resume').onclick=()=>{paused=false;nextScan=0;connectionFailures=0;scan()};
 $('disconnect').onclick=async()=>{paused=true;try{await task('disconnect')}catch(e){message(e.message)}};
 function changeTab(tab){state.tab=tab;$('drop-panel').hidden=tab!=='drop';$('explore-panel').hidden=tab!=='explore';$('drop-tab').classList.toggle('active',tab==='drop');$('explore-tab').classList.toggle('active',tab==='explore');if(tab==='explore')refresh()}
 $('drop-tab').onclick=()=>changeTab('drop');$('explore-tab').onclick=()=>changeTab('explore');
@@ -164,14 +166,14 @@ async function removeRow(e){const result=await ask('Delete file','<p>'+esc(e.nam
 $('add').onclick=async()=>{
  if(!state.connected){message('Connect your device first.');return}
  const sample=state.category==='samples',type=state.category,max=type==='projects'?128:256,base=sample?null:path(),free=state.rows.find(e=>!e.valid)?.slot||1;
- const result=await ask(sample?'Add samples':'Add file','<label>File<input id="upload" type="file" name="upload" accept="'+(sample?'.wav':type==='projects'?'.stprj':'.stsnd')+'" '+(sample?'multiple':'')+' required></label>'+(sample?'':'<label>Slot<input name="slot" type="number" min="1" max="'+max+'" value="'+free+'" required></label>'),'Upload');
- if(!result)return;const files=[...$('upload').files];try{const extension=sample?'.wav':type==='projects'?'.stprj':'.stsnd';if(files.some(file=>!file.name.toLowerCase().endsWith(extension)))throw Error('Choose '+extension+' files only.');for(const file of files)await task(sample?'sample_put':'put',{data:await data(file),name:file.name.replace(/\.[^.]+$/,''),...(sample?{}:{path:base+'/'+result.slot}),confirm:true});refresh()}catch(e){message(e.message)}
+ const result=await ask(sample?'Add samples':'Add file','<label>File<input id="upload" type="file" name="upload" accept="'+(sample?'.wav':type==='projects'?'.stprj':'.stsnd,.dnsnd')+'" '+(sample?'multiple':'')+' required></label>'+(sample?'':'<label>Slot<input name="slot" type="number" min="1" max="'+max+'" value="'+free+'" required></label>'),'Upload');
+ if(!result)return;const files=[...$('upload').files];try{const extensions=sample?['.wav']:type==='projects'?['.stprj']:['.stsnd','.dnsnd'];if(files.some(file=>!extensions.some(ext=>file.name.toLowerCase().endsWith(ext))))throw Error('Choose '+extensions.join(' or ')+' files only.');for(const file of files)await task(sample?'sample_put':'put',{data:await data(file),name:file.name.replace(/\.[^.]+$/,''),...(sample?{}:{path:base+'/'+result.slot}),confirm:true});refresh()}catch(e){message(e.message)}
 };
 async function importFiles(files,targetKey){
  if(importing){message('Wait for the current transfer to finish.');return}if(!state.connected){message('Connect your device first.');return}importing=true;
  try{
-  const sample=state.category==='samples',extension=sample?'.wav':state.category==='projects'?'.stprj':'.stsnd';
-  if(files.some(f=>!f.name.toLowerCase().endsWith(extension)))throw Error('Choose '+extension+' files.');
+  const sample=state.category==='samples',extensions=sample?['.wav']:state.category==='projects'?['.stprj']:['.stsnd','.dnsnd'];
+  if(files.some(f=>!extensions.some(ext=>f.name.toLowerCase().endsWith(ext))))throw Error('Choose '+extensions.join(' or ')+' files.');
   const target=state.rows.find(e=>e.key===targetKey),stock=sample&&target?.source==='stock',max=stock?64:state.category==='projects'?128:256;
   let first=target?.slot;
   if(!sample&&!first){for(let slot=1;slot<=max-files.length+1;slot++){if(files.every((_,i)=>!state.rows.find(e=>e.slot===slot+i)?.valid)){first=slot;break}}}
