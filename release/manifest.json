@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "0.0.2",
+  "version": "0.0.3",
   "original": {
     "filename": "Syntakt_OS1.41.syx",
     "bytes": 2571424,
@@ -12,10 +12,10 @@
     "sha256": "e8e8f3b8146e9b289c94ef2aea94383c1f091cd626363b797ed5f7100d0151df"
   },
   "machines": {
-    "filename": "synfact_mods_v0.0.2.smz4",
-    "bytes": 310596,
-    "sha256": "3e7f0a65a6a87c1599d8536028f43803a639ed9d7bde4d5f8b87d8594b19ab2c",
-    "url": "https://drive.google.com/uc?export=download&id=1FErQPsjDNE0g4oQqLkg-Luhg7iK4H9hw"
+    "filename": "synfact_mods_v0.0.3.smz4",
+    "bytes": 357952,
+    "sha256": "5c5a30d04f0c64a99aae64edc87afabad2c934516a1b6376208b716d20c73d0c",
+    "url": "https://drive.google.com/uc?export=download&id=1CWeySbde1X-pEWaMTNC5SKyvN9NyR4T0"
   },
   "patch": {
     "filename": "firmware.xor.zlib",
