@@ -167,7 +167,7 @@ $('add').onclick=async()=>{
  if(!state.connected){message('Connect your device first.');return}
  const sample=state.category==='samples',type=state.category,max=type==='projects'?128:256,base=sample?null:path(),free=state.rows.find(e=>!e.valid)?.slot||1;
  const result=await ask(sample?'Add samples':'Add file','<label>File<input id="upload" type="file" name="upload" accept="'+(sample?'.wav':type==='projects'?'.stprj':'.stsnd,.dnsnd')+'" '+(sample?'multiple':'')+' required></label>'+(sample?'':'<label>Slot<input name="slot" type="number" min="1" max="'+max+'" value="'+free+'" required></label>'),'Upload');
- if(!result)return;const files=[...$('upload').files];try{const extensions=sample?['.wav']:type==='projects'?['.stprj']:['.stsnd','.dnsnd'];if(files.some(file=>!extensions.some(ext=>file.name.toLowerCase().endsWith(ext))))throw Error('Choose '+extensions.join(' or ')+' files only.');for(const file of files)await task(sample?'sample_put':'put',{data:await data(file),name:file.name.replace(/\.[^.]+$/,''),...(sample?{}:{path:base+'/'+result.slot}),confirm:true});refresh()}catch(e){message(e.message)}
+ if(!result)return;const files=[...$('upload').files];try{const extensions=sample?['.wav']:type==='projects'?['.stprj']:['.stsnd','.dnsnd'];if(files.some(file=>!extensions.some(ext=>file.name.toLowerCase().endsWith(ext))))throw Error('Choose '+extensions.join(' or ')+' files only.');for(const file of files)await task(sample?'sample_put':'put',{data:await data(file),filename:file.name,name:file.name.replace(/\.[^.]+$/,''),...(sample?{}:{path:base+'/'+result.slot}),confirm:true});refresh()}catch(e){message(e.message)}
 };
 async function importFiles(files,targetKey){
  if(importing){message('Wait for the current transfer to finish.');return}if(!state.connected){message('Connect your device first.');return}importing=true;
@@ -180,7 +180,7 @@ async function importFiles(files,targetKey){
   if((!sample||stock)&&(!first||first+files.length-1>max))throw Error('Not enough consecutive slots.');
   const replace=(!sample||stock)&&files.some((_,i)=>state.rows.find(e=>e.slot===first+i&&(stock?e.source==='stock':true))?.valid);
   if(replace&&!await ask('Replace occupied slots?','<p>'+files.map(f=>esc(f.name)).join('<br>')+'</p>','Replace'))return;
-  for(let i=0;i<files.length;i++){const file=files[i];await task(sample&&!stock?'sample_put':'put',{data:await data(file),name:file.name.replace(/\.[^.]+$/,''),...(sample&&!stock?{}:{path:(stock?'/samples':path())+'/'+(first+i)}),confirm:true})}
+  for(let i=0;i<files.length;i++){const file=files[i];await task(sample&&!stock?'sample_put':'put',{data:await data(file),filename:file.name,name:file.name.replace(/\.[^.]+$/,''),...(sample&&!stock?{}:{path:(stock?'/samples':path())+'/'+(first+i)}),confirm:true})}
   message('Upload complete.');
  }catch(e){message(e.message)}finally{importing=false;refresh()}
 }

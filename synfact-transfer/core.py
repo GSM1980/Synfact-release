@@ -48,7 +48,7 @@ def validate_object(obj, product=13):
     return obj
 
 
-def read_package(data, *, allow_digitone=False, index=0, log=lambda text: None):
+def read_package(data, *, allow_digitone=False, filename='', index=0, log=lambda text: None):
     if data[:2] != b'PK':
         return {}, validate_object(data)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
@@ -56,10 +56,15 @@ def read_package(data, *, allow_digitone=False, index=0, log=lambda text: None):
             raise ValueError('Package is too large.')
         manifest = json.loads(z.read('manifest.json'))
         products = set(manifest.get('ProductType', []))
-        if allow_digitone and products & {'20', '28'} and '30' not in products:
+        obj = z.read(manifest['Payload'])
+        # The extension selects Digitone conversion regardless of manifest IDs.
+        # Without a filename, use the internal device ID: Transfer exports can
+        # list shared ProductType values such as ['24', '30'].
+        if allow_digitone and (filename.lower().endswith('.dnsnd')
+                               or int.from_bytes(obj[7:9], 'big') == 9):
             if manifest.get('FileType') != 'Sound':
                 raise ValueError('Only Digitone sound files can be converted.')
-            obj = validate_object(z.read(manifest['Payload']), product=9)
+            obj = validate_object(obj, product=9)
             if len(obj) > 65536 or S.u32(obj, 25) not in (0x11B, 0x11A, 0x12E):
                 raise ValueError('Invalid Digitone sound object size.')
             obj, notes = digitone.convert(obj, index)
@@ -68,7 +73,7 @@ def read_package(data, *, allow_digitone=False, index=0, log=lambda text: None):
             return {**manifest, 'ProductType': ['30']}, validate_object(obj)
         if not products & {'30'}:
             raise ValueError('Incompatible package type.')
-        return manifest, validate_object(z.read(manifest['Payload']))
+        return manifest, validate_object(obj)
 
 
 def package(obj, name, kind):
@@ -430,6 +435,7 @@ class Manager:
                     parts = S.build_sample(pcm, int(path.rsplit('/', 1)[1]), args.get('name', 'SAMPLE'))
             else:
                 manifest, obj = read_package(data, allow_digitone=path.startswith('/soundbanks/'),
+                                             filename=args.get('filename', ''),
                                              index=int(path.rsplit('/', 1)[1]) - 1, log=log)
                 expected = 'Project' if path.startswith('/projects/') else 'Sound'
                 if not manifest or manifest.get('FileType') != expected:

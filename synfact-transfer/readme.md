@@ -15,6 +15,13 @@ separate Python, Qt or browser installation.
 
 ## Changelog
 
+### Unreleased
+
+- Fix valid Digitone `.dnsnd` exports with `ProductType: ["24", "30"]`
+  being rejected as incompatible. The `.dnsnd` extension selects FM TONE
+  conversion without requiring particular manifest product IDs. Imports without
+  a filename identify Digitone sounds by the payload's internal device ID.
+
 ### 0.0.2
 
 - Add Digitone `.dnsnd` sound import with local conversion to FM TONE. Chorus

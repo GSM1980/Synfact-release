@@ -30,7 +30,7 @@ def sound(version=6, **values):
                                         c=3, d=version, e=0, tail=12))
 
 
-def package(obj, products=('20', '28'), kind='Sound'):
+def package(obj, products=('24', '30'), kind='Sound'):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w') as z:
         z.writestr('manifest.json', json.dumps(dict(ProductType=products, FileType=kind, Payload='sound')))
@@ -39,6 +39,25 @@ def package(obj, products=('20', '28'), kind='Sound'):
 
 
 class DigitoneImportTests(unittest.TestCase):
+    def test_digitone_detection_uses_payload_with_shared_product_types(self):
+        original = sound(version=4)
+        expected = DN.convert(original, index=16)[0]
+        for products in (('24', '30'), ('24',), ('20', '28'), ('20', '28', '30'), ('99',), ()):
+            with self.subTest(products=products):
+                manifest, obj = C.read_package(package(original, products=products),
+                                               allow_digitone=True, index=16)
+                self.assertEqual(obj, expected)
+                self.assertEqual(manifest['ProductType'], ['30'])
+
+    def test_dnsnd_extension_selects_conversion_regardless_of_manifest_products(self):
+        data = package(sound(version=4), products=['99'])
+        for filename in ('CHAPPET DL.dnsnd', 'PLUCKY EÅ.DNSND'):
+            with self.subTest(filename=filename):
+                self.assertEqual(C.read_package(data, allow_digitone=True, filename=filename)[1],
+                                 DN.convert(sound(version=4))[0])
+                with self.assertRaises(ValueError):
+                    C.read_package(data, filename=filename)
+
     def test_mapping_ratio_filter_lfo_and_tags(self):
         obj, notes = DN.convert(sound())
         C.validate_object(obj)
@@ -76,9 +95,18 @@ class DigitoneImportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             C.read_package(package(sound(), kind='Project'), allow_digitone=True)
         with self.assertRaises(ValueError):
-            C.read_package(package(sound(), products=['99']), allow_digitone=True)
-        with self.assertRaises(ValueError):
             C.read_package(package(sound()[:-1]), allow_digitone=True)
+
+    def test_shared_product_types_preserve_payload_validation(self):
+        damaged = bytearray(sound())
+        damaged[40] ^= 1
+        with self.assertRaisesRegex(ValueError, 'CRC'):
+            C.read_package(package(damaged), allow_digitone=True)
+        source = C.E.parse_object(sound())
+        source['b'] = 10
+        with self.assertRaisesRegex(ValueError, 'not compatible'):
+            C.read_package(package(C.E.build_object(source['record'], source)),
+                           allow_digitone=True)
 
     def test_put_converts_before_write_and_verifies_record(self):
         manager = C.Manager()
@@ -88,7 +116,8 @@ class DigitoneImportTests(unittest.TestCase):
         def write(dev, path, parts, **kwargs):
             sent.append(b''.join(parts))
             return True
-        args = dict(path='/soundbanks/B/17', data=base64.b64encode(package(sound())).decode())
+        args = dict(path='/soundbanks/B/17', filename='TEST.DNSND',
+                    data=base64.b64encode(package(sound(), products=['99'])).decode())
         with patch.object(C.S, 'data_write', side_effect=write), \
              patch.object(C.S, 'data_read', side_effect=lambda *a, **kw: sent[-1]):
             self.assertEqual(manager.run('put', args, logs.append), {'ok': True})
@@ -98,8 +127,10 @@ class DigitoneImportTests(unittest.TestCase):
 
     def test_existing_syntakt_import_is_unchanged(self):
         obj = DN.convert(sound())[0]
-        data = package(obj, products=['30'])
-        self.assertEqual(C.read_package(data, allow_digitone=True)[1], obj)
+        for products in (('30',), ('24', '30'), ('20', '28', '30')):
+            with self.subTest(products=products):
+                data = package(obj, products=products)
+                self.assertEqual(C.read_package(data, allow_digitone=True)[1], obj)
 
 
 if __name__ == '__main__':
