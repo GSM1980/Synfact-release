@@ -1,4 +1,4 @@
-# Synfact Transfer 0.0.2
+# Synfact Transfer 0.0.3
 
 Synfact Transfer is a desktop application for managing local device transfers
 over USB MIDI. It provides a desktop window, file selection dialogs and a modal
@@ -15,12 +15,10 @@ separate Python, Qt or browser installation.
 
 ## Changelog
 
-### Unreleased
+### 0.0.3
 
-- Fix valid Digitone `.dnsnd` exports with `ProductType: ["24", "30"]`
-  being rejected as incompatible. The `.dnsnd` extension selects FM TONE
-  conversion without requiring particular manifest product IDs. Imports without
-  a filename identify Digitone sounds by the payload's internal device ID.
+- Bugfix when transferring Digitone sounds.
+- Improvements to connectivity and transfers.
 
 ### 0.0.2
 
@@ -238,10 +236,10 @@ when the pinned binary wheels are available.
 
 | Build | Application | Distribution |
 | --- | --- | --- |
-| Windows portable | `dist/SynfactTransfer/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.2-Windows-AMD64.zip` |
-| Windows single file | `dist/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.2-Windows-AMD64-single.zip` |
-| Mac Apple Silicon | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.2-macOS-arm64.zip` |
-| Mac Intel | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.2-macOS-x86_64.zip` |
+| Windows portable | `dist/SynfactTransfer/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.3-Windows-AMD64.zip` |
+| Windows single file | `dist/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.3-Windows-AMD64-single.zip` |
+| Mac Apple Silicon | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.3-macOS-arm64.zip` |
+| Mac Intel | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.3-macOS-x86_64.zip` |
 
 Close the running app before rebuilding into the same directory, especially on
 Windows, where loaded Qt libraries cannot be replaced. Temporary build files
@@ -269,6 +267,7 @@ Offline transfer tests cover Digitone conversion, MIDI connection lifecycle,
 blocked driver recovery, mods installation and sample compaction. Run them from
 the repository root with `python -m unittest discover -s tests -p 'test_transfer*.py'`.
 Connection UI checks run with `node tests/test_transfer_connection_ui.js`.
+Transfer progress UI checks run with `node tests/test_transfer_progress_ui.js`.
 Windows builds have been used for manual UI iterations. macOS build scripts are
 provided, but current macOS binaries have not been compiled or validated here.
 

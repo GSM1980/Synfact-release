@@ -23,6 +23,7 @@ command against the device is the user's decision.
 """
 import argparse
 import array
+import contextlib
 import datetime
 import importlib.util
 import json
@@ -89,7 +90,7 @@ class Index:
     @classmethod
     def unpack(cls, raw):
         """-> Index or None if this copy is not a valid HZFS index."""
-        if raw[:4] != MAGIC:
+        if len(raw) < HEAD or raw[:4] != MAGIC:
             return None
         version, seq, count, block, first, windows, next_id, check, length = struct.unpack_from('>9I', raw, 4)
         if (version != VERSION or block != WINDOW or first != DATA_FIRST_K or count > MAX_ENTRIES
@@ -274,6 +275,10 @@ class Guard:
             raise PermissionError(f'hzfs: refused request type 0x{type_byte:02x}')
         return self.dev.call(type_byte, payload, timeout=timeout)
 
+    def activity(self, label):
+        method = getattr(self.dev, 'activity', None)
+        return method(label) if method else contextlib.nullcontext()
+
 
 def data_object(n, body):
     header = (be32(D.OBJECT_MAGIC) + bytes((2,)) + (8).to_bytes(2, 'big') + (13).to_bytes(2, 'big') + b'0094'
@@ -287,6 +292,9 @@ class Store:
         self.reader = D.Reader(dev, st, block, rest, log=log)
         self.write_block, self.write_rest = write_block, write_rest
         self.windows = None
+
+    def activity(self, label):
+        return self.dev.activity(label)
 
     # -- raw blocks
     def read_blocks(self, first, count, length):
@@ -333,13 +341,38 @@ class Store:
     # -- index
     def capacity(self):
         if self.windows is None:
-            self.windows, _ = self.reader.capacity()
+            with self.activity('Checking storage capacity'):
+                self.windows, _ = self.reader.capacity()
         return self.windows
+
+    def read_index_raw(self, k, phase='Checking sample library'):
+        """Read only used index bytes, retaining full validation for absent copies."""
+        def required(raw):
+            if raw[:4] != MAGIC:
+                return HEAD
+            count, length = u32(raw, 12), u32(raw, 36)
+            return length if count <= MAX_ENTRIES and length == ENTRIES_OFF + ENTRY * count else HEAD
+
+        with self.activity(phase):
+            try:
+                raw = self.reader.window_prefix(k, required)
+                if Index.unpack(raw) is not None:
+                    return raw, WINDOW
+            except (ValueError, self.st.DeviceError) as error:
+                if not getattr(error, 'retryable', True):
+                    raise
+                self.log(f'Checking index with a complete read: {error}')
+            # Before declaring a copy missing/damaged, validate the whole
+            # object's CRC. A failed prefix must never trigger initialization.
+            raw, _ = self.reader.window(k)
+            return raw, len(raw)
 
     def read_index_copies(self):
         copies = []
         for k in INDEX_K:
-            raw, _ = self.reader.window(k)
+            raw, size = self.read_index_raw(k)
+            if size != WINDOW:
+                raise ValueError('Extended sample storage window is unavailable.')
             copies.append(Index.unpack(raw))
         return copies
 
@@ -357,8 +390,9 @@ class Store:
         target = 0 if seqs[0] <= seqs[1] else 1             # the older (or invalid) copy; A on a tie
         index.seq = max(seqs) + 1 if max(seqs) >= 0 else 1
         body = index.pack()
-        self.write_at(INDEX_K[target], body)
-        back, _ = self.reader.window(INDEX_K[target])
+        with self.activity('Updating sample library'):
+            self.write_at(INDEX_K[target], body)
+        back, _ = self.read_index_raw(INDEX_K[target], 'Verifying sample library')
         if back[:len(body)] != body or Index.unpack(back) is None:
             raise RuntimeError(f'index copy {"AB"[target]} did not read back identical')
         self.log(f'  index copy {"AB"[target]} committed, sequence {index.seq}')
@@ -374,8 +408,9 @@ def cmd_init(store):
     for target in (0, 1):                     # both copies, same content, sequence 1
         index.seq = 1
         body = index.pack()
-        store.write_at(INDEX_K[target], body)
-        back, _ = store.reader.window(INDEX_K[target])
+        with store.activity('Initializing sample library'):
+            store.write_at(INDEX_K[target], body)
+        back, _ = store.read_index_raw(INDEX_K[target], 'Verifying sample library')
         if Index.unpack(back) is None:
             raise RuntimeError('fresh index did not read back')
     store.log(f'HZFS initialised: {windows - DATA_FIRST_K} data blocks '
@@ -397,7 +432,7 @@ def cmd_ls(store, log=print):
     return index
 
 
-def cmd_put(store, wav, name=None):
+def cmd_put(store, wav, name=None, *, state=None):
     rate, mono = read_wav(wav)
     name = name or Path(wav).stem
     if len(name.encode('utf-8')) > 32:
@@ -406,7 +441,7 @@ def cmd_put(store, wav, name=None):
         store.log(f'  resampling {rate} Hz -> {RATE} Hz (Hermite{", source above 48 kHz may alias" if rate > RATE else ""})')
     pcm = to_pcm16be(resample(mono, rate))
     body, frames = samp_body(pcm, name)
-    index, copies = store.current()
+    index, copies = state if state is not None else store.current()
     if any(e['name'] == name for e in index.entries):
         raise ValueError(f'a file named {name!r} already exists (rm it first)')
     blocks = -(-len(body) // WINDOW)

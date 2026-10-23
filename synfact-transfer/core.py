@@ -4,6 +4,7 @@ No MIDI is opened or sent on import.
 """
 from pathlib import Path
 import base64
+import contextlib
 import io
 import json
 import re
@@ -26,9 +27,16 @@ import compaction
 import digitone
 from midi_io import MidiDevice, ConnectionLost, ports
 
+# The pinned RtMidi 1.5.8 cannot enlarge WinMM's SysEx buffers. Hardware reads
+# validated 2 KiB with no fixed delay; larger blocks suffered truncation.
+# Write pacing stays independent of read benchmarks.
+READ_BLOCK = 2048
+READ_REST = 0.0
+WRITE_REST = 0.05
+
 
 class Cancelled(S.DeviceError):
-    pass
+    retryable = False
 
 
 def validate_object(obj, product=13):
@@ -46,6 +54,20 @@ def validate_object(obj, product=13):
     if int.from_bytes(obj[7:9], 'big') != product:
         raise ValueError('This object is not compatible with the connected device.')
     return obj
+
+
+def read_object(dev, path, *, log=None):
+    """Fast USB read, with one conservative restart on incomplete/corrupt data."""
+    log = log or getattr(dev, 'log', lambda text: None)
+    for attempt, (block, rest) in enumerate(((READ_BLOCK, READ_REST), (2048, 0.05))):
+        try:
+            return validate_object(S.data_read(dev, path, block=block, rest=rest, progress=False))
+        except Cancelled:
+            raise
+        except (S.DeviceError, ValueError) as error:
+            if attempt:
+                raise
+            log(f'Reading again with conservative settings: {error}')
 
 
 def read_package(data, *, allow_digitone=False, filename='', index=0, log=lambda text: None):
@@ -172,9 +194,37 @@ class Transport:
         self.dev, self.log, self.cancelled = dev, log, cancelled
         self.total, self.received = expected or 0, 0
         self.verifying = False
+        self.phase = None
+        self.phase_started = 0
+        self.phase_current = 0
+        self.activity_label = None
+
+    @contextlib.contextmanager
+    def activity(self, label):
+        previous = self.activity_label
+        self.activity_label = label
+        self.report(0, 0, label)
+        try:
+            yield
+        finally:
+            self.activity_label = previous
 
     def report(self, current, total, phase):
-        self.log('@progress ' + json.dumps({'current': current, 'total': total, 'phase': phase}))
+        now = time.monotonic()
+        if phase != self.phase or current < self.phase_current or current == 0:
+            self.phase, self.phase_started = phase, now
+        self.phase_current = current
+        elapsed = max(0, now - self.phase_started)
+        self.log('@progress ' + json.dumps({'current': current, 'total': total, 'phase': phase,
+                                            'elapsed_seconds': elapsed,
+                                            'kib_s': current / 1024 / elapsed if elapsed else 0}))
+
+    def finish_phase(self):
+        if self.phase_current:
+            elapsed = time.monotonic() - self.phase_started
+            if elapsed > 0:
+                self.log(f'{self.phase}: {self.phase_current / 1024:.1f} KiB in '
+                         f'{elapsed:.2f} s ({self.phase_current / 1024 / elapsed:.1f} KiB/s).')
 
     def call(self, t, payload=b'', timeout=None):
         if self.cancelled() and t not in (0x56, 0x59):
@@ -184,15 +234,20 @@ class Transport:
             if t == 0x57 and len(payload) >= 4:
                 self.total = S.u32(payload, 0)
                 self.verifying = True
-                self.report(0, self.total, 'Uploading')
+                self.report(0, self.total, self.activity_label or 'Uploading')
             elif t == 0x58 and len(rx) >= 18:
-                self.report(S.u32(rx, 14), self.total, 'Uploading')
+                self.report(S.u32(rx, 14), self.total, self.activity_label or 'Uploading')
             elif t == 0x54:
                 self.received = 0
+                self.report(0, 0 if self.activity_label else self.total,
+                            self.activity_label or ('Verifying' if self.verifying else 'Downloading'))
             elif t == 0x55 and len(rx) >= 27:
                 self.received += S.u32(rx, 23)
                 total = self.total if self.verifying else (self.received if rx[18] else 0)
-                self.report(self.received, total, 'Verifying' if self.verifying else 'Downloading')
+                self.report(self.received, 0 if self.activity_label else total,
+                            self.activity_label or ('Verifying' if self.verifying else 'Downloading'))
+            elif t in (0x56, 0x59) and len(rx) >= 6 and rx[5]:
+                self.finish_phase()
         return rx
 
 
@@ -265,7 +320,6 @@ class Manager:
         if not self.dev:
             raise RuntimeError('Connect your device first.')
         dev = Transport(self.dev, log, cancelled, args.get('bytes', 0))
-        S.REST = 0.05
         if action == 'download_group':
             items = args.get('items', [])
             if not 1 <= len(items) <= 256:
@@ -340,7 +394,7 @@ class Manager:
             name = args['name']
             if not name or len(name.encode('utf-8')) > 32 or chr(0) in name:
                 raise ValueError('The name must contain 1 to 32 UTF-8 bytes.')
-            store = H.Store(dev, S, block=2048, rest=0.0, log=log)
+            store = H.Store(dev, S, block=READ_BLOCK, rest=READ_REST, log=log)
             index, copies = store.current()
             if any(e['name'] == name and e['id'] != int(args['id']) for e in index.entries):
                 raise ValueError('A sample with this name already exists.')
@@ -352,7 +406,7 @@ class Manager:
         if action.startswith('hz_'):
             if self.profile not in ('v6', 'v7'):
                 raise ValueError('Extended sample storage requires a compatible loader.')
-            store = H.Store(dev, S, block=2048, rest=0.0, write_block=8192, write_rest=0, log=log)
+            store = H.Store(dev, S, block=READ_BLOCK, rest=READ_REST, write_block=8192, write_rest=0, log=log)
             if action == 'hz_init':
                 H.cmd_init(store)
             elif action in ('hz_compact', 'hz_restore'):
@@ -371,7 +425,7 @@ class Manager:
                         'largest': H.largest_hole(index, index.windows) * H.WINDOW,
                         'copies': [c.seq if c else None for c in copies]}
             elif action == 'hz_put':
-                index, _ = store.current()
+                index, copies = store.current()
                 if not 1 <= index.next_id <= 0x7fff:
                     raise ValueError('High memory sample IDs are exhausted (maximum 32767). '
                                      'Deleting or compacting samples does not reset IDs.')
@@ -382,7 +436,7 @@ class Manager:
                     rate, _ = H.read_wav(wav)
                     if rate > H.RATE:
                         raise ValueError('Convert the WAV to 48 kHz before importing to avoid aliasing.')
-                    return H.cmd_put(store, wav, args.get('name'))
+                    return H.cmd_put(store, wav, args.get('name'), state=(index, copies))
             elif action == 'hz_get':
                 with tempfile.TemporaryDirectory() as td:
                     out = Path(td) / 'sample.wav'
@@ -407,7 +461,7 @@ class Manager:
             return {'entries': entries, 'path': path}
         if action == 'get':
             path = device_path(args['path'])
-            obj = validate_object(S.data_read(dev, path, block=2048, progress=False))
+            obj = read_object(dev, path)
             name = args.get('name', 'backup')
             if path.startswith('/samples/'):
                 sample = S.parse_sample(obj)
@@ -441,10 +495,10 @@ class Manager:
                 if not manifest or manifest.get('FileType') != expected:
                     raise ValueError('The file type does not match the destination.')
                 parts = [obj[:-12], obj[-12:]]
-            if not S.data_write(dev, path, parts, block=8192):
+            if not S.data_write(dev, path, parts, block=8192, rest=WRITE_REST):
                 raise RuntimeError('The device did not confirm the written size.')
             sent = validate_object(b''.join(parts))
-            back = validate_object(S.data_read(dev, path, block=2048, progress=False))
+            back = read_object(dev, path)
             # Device may regenerate slot/header fields; compare actual record data.
             if E.parse_object(back)['record'] != E.parse_object(sent)['record']:
                 raise RuntimeError('Verification does not match the uploaded data.')
@@ -478,7 +532,7 @@ class Manager:
                 raise ValueError('Mods files require mods loader V4 or later.')
             path = '/samples/449'
             if action == 'machine_get':
-                obj = S.data_read(dev, path, block=2048, progress=False)
+                obj = read_object(dev, path)
                 parsed = F.parse_object(obj)
                 if not parsed['crc_ok'] or not parsed['footer_ok']:
                     raise ValueError('Mods file CRC mismatch.')
@@ -489,9 +543,9 @@ class Manager:
                 info = machine_info(data)
                 parts = F.build_object(449, data, args.get('name', 'MODS'))
                 self.prepare_mods_storage(dev, log)
-                if not S.data_write(dev, path, parts, block=8192):
+                if not S.data_write(dev, path, parts, block=8192, rest=WRITE_REST):
                     raise RuntimeError('Write not confirmed.')
-                parsed = F.parse_object(S.data_read(dev, path, block=2048, progress=False))
+                parsed = F.parse_object(read_object(dev, path))
                 if not parsed['crc_ok'] or not parsed['footer_ok'] or parsed['data'] != data:
                     raise RuntimeError('Mods file verification failed.')
                 self.profile = 'v7' if info['format'] == 'SAFE' or info['sites'] == 77 else 'v6'
@@ -533,18 +587,18 @@ class Manager:
         # Probe the firmware through raw reads instead of the cached profile:
         # first installations have neither mods nor an HZFS index to detect.
         log('Checking extended sample storage before uploading mods...')
-        store = H.Store(dev, S, block=2048, rest=0.05, write_block=8192, write_rest=0, log=log)
+        store = H.Store(dev, S, block=READ_BLOCK, rest=READ_REST, write_block=8192, write_rest=0, log=log)
         copies, damaged = [], False
         for k in H.INDEX_K:
             if dev.cancelled():
                 raise Cancelled('Transfer cancelled.')
             try:
-                raw, _ = store.reader.window(k)
+                raw, size = store.read_index_raw(k, 'Checking sample storage')
             except Exception as error:
                 if dev.cancelled():
                     raise Cancelled('Transfer cancelled.') from error
                 raise RuntimeError('Cannot read extended storage. Check the MIDI connection and make sure the Synfact firmware is running after restart.') from error
-            if len(raw) != H.WINDOW:
+            if size != H.WINDOW:
                 raise RuntimeError('Extended storage is unavailable. Install the Synfact firmware, restart the device, and reconnect before uploading mods.')
             try:
                 index = H.Index.unpack(raw)
@@ -567,9 +621,8 @@ class Manager:
 
     def detect_profile(self, log):
         profile = 'stock'
-        S.REST = 0.05
         try:
-            obj = S.data_read(self.dev, '/samples/449', block=2048, progress=False)
+            obj = read_object(self.dev, '/samples/449', log=log)
             parsed = F.parse_object(obj)
             if parsed['crc_ok'] and parsed['footer_ok']:
                 info = machine_info(parsed['data'])
@@ -579,7 +632,7 @@ class Manager:
         except Exception:
             pass
         try:
-            store = H.Store(self.dev, S, block=2048, rest=0, log=log)
+            store = H.Store(self.dev, S, block=READ_BLOCK, rest=READ_REST, log=log)
             store.current()
             if profile != 'v7':
                 profile = 'v6'

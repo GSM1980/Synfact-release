@@ -59,7 +59,7 @@ async function tick(){
   for(const j of s.jobs){
    if(j.id===activeTransfer){
     const p=j.progress;
-    if(p&&p.total>0){const percent=Math.min(100,Math.floor(p.current/p.total*100));$('transfer-progress').value=percent;$('transfer-detail').textContent=p.phase+' · '+percent+'% · '+size(p.current)+' / '+size(p.total)}
+    if(p){let detail=p.phase+' · '+size(p.current);if(p.total>0){const percent=Math.min(100,Math.floor(p.current/p.total*100));$('transfer-progress').value=percent;detail=p.phase+' · '+percent+'% · '+size(p.current)+' / '+size(p.total)}else $('transfer-progress').removeAttribute('value');$('transfer-detail').textContent=detail+(p.kib_s>0?' · '+p.kib_s.toFixed(1)+' KiB/s':'')}
     else{$('transfer-progress').removeAttribute('value');$('transfer-detail').textContent=j.status==='queued'?'Waiting…':'Transferring…'}
    }
    const waiter=waits.get(j.id);

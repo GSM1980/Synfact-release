@@ -101,16 +101,21 @@ class Reader:
     def __init__(self, dev, st, block, rest, retries=2, log=print):
         self.dev, self.st, self.block, self.retries, self.log = ReadOnly(dev), st, block, retries, log
         self.dev_is_real = not isinstance(dev, FakeV5)
-        st.REST = rest                      # pause between partials (stfiles default 0.05 s)
+        self.rest = rest
 
     def window(self, k):
         n = RAW_FIRST_N + k
         for attempt in range(self.retries + 1):
             try:
                 start = time.perf_counter()
-                body = unpack_object(self.st.data_read(self.dev, f'/samples/{n}', block=self.block, progress=False), n)
+                block = min(self.block, 2048) if attempt else self.block
+                rest = max(self.rest, 0.05) if attempt else self.rest
+                body = unpack_object(self.st.data_read(self.dev, f'/samples/{n}', block=block,
+                                                       progress=False, rest=rest), n)
                 return body, time.perf_counter() - start
             except (self.st.DeviceError, ValueError) as error:
+                if not getattr(error, 'retryable', True):
+                    raise
                 self.log(f'  window {k:#06x}: {error} (attempt {attempt + 1})')
         raise RuntimeError(f'window {k:#x} failed after {self.retries + 1} attempts')
 
@@ -129,7 +134,7 @@ class Reader:
             # when asked immediately, 2026-10-13).
             chunk, seq, last = b'', 0, 0
             while len(chunk) < HEADER and not last and seq < 64:
-                time.sleep(max(st.REST, 0.05) if self.dev_is_real else st.REST)
+                time.sleep(max(self.rest, 0.05) if self.dev_is_real else self.rest)
                 rx = st._ok(self.dev.call(st.T_RD_PART, be32(job) + be32(seq), timeout=10),
                             f'DataReadPartial {seq}')
                 last = rx[18]
@@ -143,6 +148,58 @@ class Reader:
             return size
         finally:
             self.dev.call(st.T_RD_CLOSE, be32(job))
+
+    def window_prefix(self, k, length):
+        """Read a bounded body prefix; caller must validate its own checksum.
+
+        `length(prefix)` selects the required body length from its header. The
+        surrounding object's footer is not read; this is for self-checking data
+        such as HZFS indexes. Missing/invalid indexes use a full read instead.
+        """
+        st, n = self.st, RAW_FIRST_N + k
+        rx = st._ok(self.dev.call(st.T_RD_OPEN, f'/samples/{n}'.encode() + b'\0'
+                                 + be32(self.block) + b'\0'), 'Read index open')
+        job, data, seq, empty = u32(rx, 6), bytearray(), 0, 0
+        target = None
+        try:
+            while True:
+                if self.rest:
+                    time.sleep(self.rest)
+                rx = st._ok(self.dev.call(st.T_RD_PART, be32(job) + be32(seq), timeout=10),
+                            'Read index partial')
+                if len(rx) < 27 or u32(rx, 6) != job:
+                    raise ValueError('Invalid index read reply.')
+                size = u32(rx, 23)
+                chunk = rx[27:]
+                if len(chunk) != size:
+                    raise ValueError('Truncated index read.')
+                data.extend(chunk)
+                empty = empty + 1 if not size else 0
+                if empty > 64 or len(data) > HEADER + WINDOW + FOOTER:
+                    raise ValueError('Index read did not make bounded progress.')
+                if len(data) >= HEADER:
+                    body_size = u32(data, 25)
+                    if (u32(data, 0) != OBJECT_MAGIC or u32(data, 21) != n
+                            or data[29:31] != b'\0\x0c' or body_size != WINDOW):
+                        raise ValueError('Index read requires a complete raw storage window.')
+                    body = data[HEADER:HEADER + body_size]
+                    if len(body) >= 64 and target is None:
+                        target = length(body)
+                        if not 0 < target <= body_size:
+                            raise ValueError('Invalid index prefix length.')
+                    if target is not None and len(body) >= target:
+                        return bytes(body[:target])
+                if rx[18]:
+                    raise ValueError('Index read ended before its header or contents.')
+                seq += 1
+        finally:
+            reply = self.dev.call(st.T_RD_CLOSE, be32(job))
+            # OS 1.41 closes an intentionally partial job with this diagnostic.
+            # The used index bytes are checked against their own CRC by HZFS.
+            if reply is None or len(reply) < 6:
+                raise ValueError('Missing index read close response.')
+            if not reply[5] and st.cstr(reply, 6)[0] != 'Reader did not complete':
+                st._ok(reply, 'Read index close')
 
     def nonempty(self, k):
         return self.window_size(k) > 0

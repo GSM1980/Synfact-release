@@ -1,12 +1,13 @@
 {
   "date": "2026-10-13",
+  "last_updated": "2026-10-23",
   "modules": [
     {
       "file": "vendor/stfiles.py",
       "source": "digikit-syntakt-review/tools/stfiles.py",
       "source_sha256": "2499c1fda386c84892daaff04644a6aae845df0ace7066ee481630d2ba685a04",
-      "copy_sha256": "2499c1fda386c84892daaff04644a6aae845df0ace7066ee481630d2ba685a04",
-      "adaptation": "Unmodified snapshot."
+      "copy_sha256": "9fc41affed86d9c876a9ce231e082742a48d221d311276e0b2b4e55c5346f143",
+      "adaptation": "Read and write pacing passed explicitly per operation; zero delay skips sleeping. Original framing, checksums and separate write footer retained."
     },
     {
       "file": "vendor/files_host.py",
@@ -19,15 +20,15 @@
       "file": "vendor/emmc_dump.py",
       "source": "syntakt-work/loader-v5-dump/emmc_dump.py",
       "source_sha256": "02cf84d15b45d1bd151cd811952d566b233bb79b807f4ea03ae01938e4713a3f",
-      "copy_sha256": "3602fe6a7be881e15e7e8f623c657f508b6c6cb93ce8b4bd603b5adf2c0635ca",
-      "adaptation": "Only import paths adapted for the application."
+      "copy_sha256": "ad1f39efc083dbac19109deee96302a2728f05f9cb5468457bcc4275f680ab2d",
+      "adaptation": "Import paths adapted; reader-local pacing, conservative retries and cancellation propagation; bounded raw-window prefix reads for self-checking metadata, accepting OS 1.41's expected partial-close diagnostic."
     },
     {
       "file": "vendor/hzfs.py",
       "source": "syntakt-work/loader-v6-hz/hzfs.py",
       "source_sha256": "25f8921eb3e7fc4a4c974efce20b1244a6145204570954b426e5797b5b98111c",
-      "copy_sha256": "7f18be21b4967745ffa4b40a477bb6bb820ea45a7dacc19eb1080c5e5cb9fa94",
-      "adaptation": "Only import paths adapted for the application."
+      "copy_sha256": "d6b1d856a6766703b44766114b5bd106bc79eb5e63dd6c8f07ae89c33b2d7cb3",
+      "adaptation": "Import paths adapted; valid indexes read through their declared length and own CRC, with full-window fallback for absent/damaged copies; explicit library progress phases and per-upload reuse of the checked index pair."
     },
     {
       "file": "vendor/elektron_object.py",

@@ -340,7 +340,7 @@ def _ok(rx, what):
     return rx
 
 
-def data_read(dev, path, block=BLOCK, compression=0, progress=True):
+def data_read(dev, path, block=BLOCK, compression=0, progress=True, *, rest=REST):
     rx = _ok(dev.call(T_RD_OPEN, path.encode("cp1252") + b"\0" + be32(block)
                       + bytes((compression,))), f"DataReadOpen {path}")
     job = u32(rx, 6)
@@ -348,7 +348,8 @@ def data_read(dev, path, block=BLOCK, compression=0, progress=True):
     out, seq, last = bytearray(), 0, 0
     try:
         while not last:
-            time.sleep(REST)
+            if rest:
+                time.sleep(rest)
             rx = _ok(dev.call(T_RD_PART, be32(job) + be32(seq), timeout=10),
                      f"DataReadPartial seq {seq}")
             last, size = rx[18], u32(rx, 23)
@@ -367,7 +368,7 @@ def data_read(dev, path, block=BLOCK, compression=0, progress=True):
     return bytes(out)
 
 
-def data_write(dev, path, parts, block=BLOCK):
+def data_write(dev, path, parts, block=BLOCK, *, rest=REST):
     """Write an object made of `parts` (list of bytes); each part starts a new
     partial, as Elektroid does for the sample footer."""
     total = sum(len(p) for p in parts)
@@ -377,7 +378,7 @@ def data_write(dev, path, parts, block=BLOCK):
     print(f"  write open {path}: job={job} size={total}")
     seq = sent = 0
     try:
-        _write_parts(dev, job, parts, block)
+        _write_parts(dev, job, parts, block, rest=rest)
     except DeviceError:
         rx = dev.call(T_WR_CLOSE, be32(job) + be32(total), timeout=10)
         print(f"  (closing job {job} after the error: "
@@ -389,12 +390,13 @@ def data_write(dev, path, parts, block=BLOCK):
     return u32(rx, 10) == total
 
 
-def _write_parts(dev, job, parts, block):
+def _write_parts(dev, job, parts, block, *, rest=REST):
     seq = sent = 0
     for part in parts:
         for off in range(0, len(part), block):
             chunk = part[off:off + block]
-            time.sleep(REST)
+            if rest:
+                time.sleep(rest)
             rx = _ok(dev.call(T_WR_PART, be32(job) + be32(seq) + be32(ecrc(chunk))
                               + be32(len(chunk)) + chunk, timeout=10),
                      f"DataWritePartial seq {seq}")
