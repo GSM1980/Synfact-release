@@ -14,9 +14,6 @@ A mod system for the Elektron Syntakt.
 - **FM TONE machine** ported from Digitone MK1.
 - **Polyphonic mode** using voices from adjacent tracks, which are set to slave mode.
 - **Third LFO** per track, with its own page, destinations and parameter locks.
-- **Faster UI with parameter locks:** editing, previews and redraws with p-locks and held trigs use far less CPU.
-- **Faster NORMALIZING** in the recorder (up to three times more samples per pass, identical audio).
-- **Correct labels** for the new machines' parameters as KEY TRACK, PITCH BEND, VELOCITY and other modulation destinations.
 - **SYSTEM INFO shows the mods version** (SMZ X.Y.Z).
 
 See the [changelog](CHANGELOG.md) for the release history.
