@@ -14,7 +14,7 @@ import core as C
 import digitone as DN
 
 
-def sound(version=6, **values):
+def sound(version=6, *, record_tail=b'', **values):
     size = {1: 0x11B, 2: 0x11A, 3: 0x11A}.get(version, 0x12E)
     record = bytearray(size)
     struct.pack_into('>III', record, 0, 0xBEEFBACE, version, 0x201)
@@ -26,6 +26,7 @@ def sound(version=6, **values):
     for i, slot in enumerate(DN.DN_ORDER):
         struct.pack_into('>H', record, 28 + 2 * i, slots.get(slot, 0))
     record[-4:] = DN.END
+    record.extend(record_tail)
     return C.E.build_object(record, dict(version=2, a=5, b=9, os='0051',
                                         c=3, d=version, e=0, tail=12))
 
@@ -82,6 +83,36 @@ class DigitoneImportTests(unittest.TestCase):
             with self.subTest(version=version):
                 C.validate_object(DN.convert(sound(version))[0])
 
+    def test_v2_transfer_buffer_preserves_conversion(self):
+        original = sound(version=2)
+        # BASIC SQUARE exported by Transfer has a 302-byte buffer containing
+        # a 282-byte v2 record and a nonzero 20-byte suffix after its footer.
+        padded = sound(version=2, record_tail=bytes(range(20)))
+        self.assertEqual(DN.convert(padded), DN.convert(original))
+        for filename in ('B001 BASIC SQUARE.dnsnd', ''):
+            with self.subTest(filename=filename):
+                manifest, obj = C.read_package(package(padded), allow_digitone=True,
+                                               filename=filename, index=16)
+                self.assertEqual(obj, DN.convert(original, index=16)[0])
+                self.assertEqual(manifest['ProductType'], ['30'])
+                C.validate_object(obj)
+
+    def test_transfer_buffer_requires_v2_size_and_fixed_footer(self):
+        padded = C.E.parse_object(sound(version=2, record_tail=bytes(range(20))))['record']
+        bad_footer = bytearray(padded)
+        bad_footer[278] ^= 1
+        bad_footer[-4:] = DN.END
+        for record in (padded[:-1], padded + b'\0', bad_footer,
+                       C.E.parse_object(sound(version=2))['record'] + b'\0',
+                       C.E.parse_object(sound(version=1, record_tail=bytes(19)))['record'],
+                       C.E.parse_object(sound(version=3, record_tail=bytes(20)))['record']):
+            with self.subTest(length=len(record), version=record[7]):
+                with self.assertRaisesRegex(ValueError, 'size or footer'):
+                    DN.sound_slots(record)
+                with self.assertRaisesRegex(ValueError, 'size'):
+                    C.read_package(package(C.E.build_object(record, C.E.parse_object(sound(version=record[7])))),
+                                   allow_digitone=True)
+
     def test_rejects_wrong_version_and_truncated_record(self):
         for record in (b'', b'\xbe\xef\xba\xce' + struct.pack('>I', 7),
                        C.E.parse_object(sound())['record'][:-1]):
@@ -117,7 +148,8 @@ class DigitoneImportTests(unittest.TestCase):
             sent.append(b''.join(parts))
             return True
         args = dict(path='/soundbanks/B/17', filename='TEST.DNSND',
-                    data=base64.b64encode(package(sound(), products=['99'])).decode())
+                    data=base64.b64encode(package(sound(version=2, record_tail=bytes(range(20))),
+                                                 products=['99'])).decode())
         with patch.object(C.S, 'data_write', side_effect=write), \
              patch.object(C.S, 'data_read', side_effect=lambda *a, **kw: sent[-1]):
             self.assertEqual(manager.run('put', args, logs.append), {'ok': True})

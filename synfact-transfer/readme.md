@@ -17,7 +17,9 @@ separate Python, Qt or browser installation.
 
 ### 0.0.3
 
-- Bugfix when transferring Digitone sounds.
+- Accept Digitone v2 sounds exported in 302-byte Transfer buffers, with the
+  record footer at byte 278 and 20 trailing bytes (including nonzero data).
+  Record size, footer and object CRC validation remain enforced.
 - Improvements to connectivity and transfers.
 
 ### 0.0.2

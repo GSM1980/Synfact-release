@@ -38,7 +38,12 @@ def sound_slots(record):
     sizes = {1: 0x11B, 2: 0x11A, 3: 0x11A, 4: 0x12E, 5: 0x12E, 6: 0x12E}
     if version not in sizes:
         raise ValueError(f'Unsupported Digitone sound version {version}.')
-    if len(record) != sizes[version] or record[-4:] != END:
+    size = sizes[version]
+    # Transfer also exports v2 records in a 302-byte buffer. The v2 footer
+    # stays at byte 278; the following 20 bytes can be nonzero buffer residue.
+    # Check the version's fixed footer offset, never search arbitrary payloads.
+    valid_sizes = (size, 0x12E) if version == 2 else (size,)
+    if len(record) not in valid_sizes or record[size - 4:size] != END:
         raise ValueError('Invalid Digitone sound record size or footer.')
     params = list(struct.unpack_from('>80H', record, 0x1C))
     if version == 1:
