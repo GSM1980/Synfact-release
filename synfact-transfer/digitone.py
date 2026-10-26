@@ -27,6 +27,10 @@ COPY = dict(zip(
      1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 52, 53)))
 # Defaults of Syntakt parameters that have no source in the Digitone sound.
 DEFAULTS = {27: 0, 36: 0, 39: 0, 41: 0x4000, 49: 0x100, 50: 0x100}
+# Filter TYPE by name. Digitone 1.44 (formatter 40014b6c): OFF, LP2, HP, LP4.
+# Syntakt 1.41 tracks 1-8 use FLTR page 9 (view set chosen at 40031de6), whose
+# TYPE is LP, HP, EQ 1..EQ 5, OFF (formatter 400781d0). There is no 4-pole LP.
+FILTER_TYPE = (7, 0, 1, 0)
 END = b'\xba\xce\xf0\x0c'
 
 
@@ -80,8 +84,10 @@ def convert(obj, index=0):
     slots = {**DEFAULTS, **{dest: words[src] for src, dest in COPY.items()}}
     pair = words[20] >> 1
     slots[21], slots[69] = (pair % 19) << 8, (pair // 19) << 8
-    slots[27] = (7, 1, 3, 0)[words[54] >> 8] << 8
+    slots[27] = FILTER_TYPE[words[54] >> 8] << 8
     notes = ['Digitone sound converted to FM TONE. Chorus and arpeggiator data ignored.']
+    if words[54] >> 8 == 3:
+        notes.append('Filter LP4 imported as LP (Syntakt has no 4-pole lowpass).')
     for slot in (4, 12):
         target = words[slot] >> 8
         dest = COPY.get(target, 21 if target == 20 else 0)

@@ -64,11 +64,32 @@ class DigitoneImportTests(unittest.TestCase):
         C.validate_object(obj)
         rec = C.E.parse_object(obj)['record']
         slots = dict(zip(DN.ST_ORDER, struct.unpack_from('>70H', rec, 28)))
-        self.assertEqual((slots[18], slots[21], slots[69], slots[27]), (0x300, 7 << 8, 3 << 8, 3 << 8))
+        self.assertEqual((slots[18], slots[21], slots[69], slots[27]), (0x300, 7 << 8, 3 << 8, 1 << 8))
         self.assertEqual((slots[4], slots[12]), (DN.ST_ORDER.index(48) << 8, 54 << 8))
         self.assertEqual(struct.unpack_from('>I', rec, 8)[0], 0x201)
         self.assertEqual(rec[172], 65)
         self.assertTrue(notes)
+
+    def test_filter_type_maps_by_name_to_digital_track_filter(self):
+        # Digitone OFF, LP2, HP, LP4 -> Syntakt tracks 1-8: LP 0, HP 1, OFF 7.
+        for kind, expected in ((0, 7), (1, 0), (2, 1), (3, 0), (4, 0)):
+            with self.subTest(kind=kind):
+                obj, notes = DN.convert(sound(**{'54': kind << 8}))
+                rec = C.E.parse_object(obj)['record']
+                slots = dict(zip(DN.ST_ORDER, struct.unpack_from('>70H', rec, 28)))
+                self.assertEqual(slots[27], expected << 8)
+                self.assertEqual(any('LP4' in note for note in notes), kind >= 3)
+
+    def test_filter_parameters_copied_word_for_word(self):
+        # Digitone FREQ, RESO, ENV, ATK, DEC, SUS, REL, BASE, WDTH, DEL.
+        pairs = ((55, 28), (56, 29), (57, 30), (58, 32), (59, 33), (60, 34),
+                 (61, 35), (62, 37), (63, 38), (64, 31))
+        values = {str(dn): (0x11 + i) << 8 | i for i, (dn, _) in enumerate(pairs)}
+        rec = C.E.parse_object(DN.convert(sound(**values))[0])['record']
+        slots = dict(zip(DN.ST_ORDER, struct.unpack_from('>70H', rec, 28)))
+        for dn, st in pairs:
+            self.assertEqual(slots[st], values[str(dn)], (dn, st))
+        self.assertEqual(slots[36], 0)
 
     def test_chorus_and_arpeggiator_have_no_effect(self):
         original = sound()

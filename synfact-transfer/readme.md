@@ -1,4 +1,4 @@
-# Synfact Transfer 0.0.3
+# Synfact Transfer 0.0.4
 
 Synfact Transfer is a desktop application for managing local device transfers
 over USB MIDI. It provides a desktop window, file selection dialogs and a modal
@@ -14,6 +14,12 @@ application. Once that package has been built, running it does not require a
 separate Python, Qt or browser installation.
 
 ## Changelog
+
+### 0.0.4
+
+- Fixed Digitone sound import filter params: Digitone filter TYPE OFF/LP2/HP/LP4
+  now becomes OFF/LP/HP/LP on the Syntakt track filter (tracks 1–8). LP2 was
+  imported as HP and HP as EQ 2.
 
 ### 0.0.3
 
@@ -238,10 +244,10 @@ when the pinned binary wheels are available.
 
 | Build | Application | Distribution |
 | --- | --- | --- |
-| Windows portable | `dist/SynfactTransfer/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.3-Windows-AMD64.zip` |
-| Windows single file | `dist/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.3-Windows-AMD64-single.zip` |
-| Mac Apple Silicon | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.3-macOS-arm64.zip` |
-| Mac Intel | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.3-macOS-x86_64.zip` |
+| Windows portable | `dist/SynfactTransfer/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.4-Windows-AMD64.zip` |
+| Windows single file | `dist/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.4-Windows-AMD64-single.zip` |
+| Mac Apple Silicon | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.4-macOS-arm64.zip` |
+| Mac Intel | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.4-macOS-x86_64.zip` |
 
 Close the running app before rebuilding into the same directory, especially on
 Windows, where loaded Qt libraries cannot be replaced. Temporary build files

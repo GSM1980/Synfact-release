@@ -105,8 +105,8 @@ Project code and documentation are licensed under the [MIT License](LICENSE), us
 
 ## Synfact Transfer
 
-Standalone desktop transfer application, version 0.0.3. Fixes Digitone sound
-transfers and improves connectivity and transfers.
+Standalone desktop transfer application, version 0.0.4. Fixes Digitone sound import filter
+parameters.
 See the [Synfact Transfer changelog](synfact-transfer/readme.md#changelog) for the
 version history.
 
