@@ -66,68 +66,21 @@ def u32(b, o):
 
 
 # ------------------------------------------------------------------ index
-class Index:
-    def __init__(self, seq=0, windows=0, next_id=1, entries=None, slot_map=None):
-        self.seq, self.windows, self.next_id = seq, windows, next_id
-        self.entries = entries or []          # dicts: id first blocks bytes frames crc created flags name
-        self.slot_map = slot_map or [0] * MAP_SLOTS     # slot 65+i -> entry id (phase 2)
-
-    def pack(self):
-        if len(self.entries) > MAX_ENTRIES:
-            raise ValueError('index full')
-        body = bytearray(ENTRIES_OFF + ENTRY * len(self.entries))
-        struct.pack_into(f'>{MAP_SLOTS}I', body, MAP_OFF, *self.slot_map)
-        for n, e in enumerate(self.entries):
-            name = e['name'].encode('utf-8')[:32]
-            struct.pack_into('>8I32s', body, ENTRIES_OFF + n * ENTRY, e['id'], e['first'], e['blocks'], e['bytes'],
-                             e['frames'], e['crc'], e['created'], e['flags'], name)
-        body[0:4] = MAGIC
-        struct.pack_into('>9I', body, 4, VERSION, self.seq, len(self.entries), WINDOW, DATA_FIRST_K, self.windows,
-                         self.next_id, 0, len(body))
-        struct.pack_into('>I', body, CRC_OFF, crc(bytes(body)))      # crc of everything, crc field as 0
-        return bytes(body)
-
-    @classmethod
-    def unpack(cls, raw):
-        """-> Index or None if this copy is not a valid HZFS index."""
-        if len(raw) < HEAD or raw[:4] != MAGIC:
-            return None
-        version, seq, count, block, first, windows, next_id, check, length = struct.unpack_from('>9I', raw, 4)
-        if (version != VERSION or block != WINDOW or first != DATA_FIRST_K or count > MAX_ENTRIES
-                or length != ENTRIES_OFF + ENTRY * count or length > len(raw)):
-            return None
-        if crc(raw[:CRC_OFF] + bytes(4) + raw[CRC_OFF + 4:length]) != check:
-            return None
-        slot_map = list(struct.unpack_from(f'>{MAP_SLOTS}I', raw, MAP_OFF))
-        entries = []
-        for n in range(count):
-            f = struct.unpack_from('>8I32s', raw, ENTRIES_OFF + n * ENTRY)
-            entries.append(dict(id=f[0], first=f[1], blocks=f[2], bytes=f[3], frames=f[4], crc=f[5], created=f[6],
-                                flags=f[7], name=f[8].rstrip(b'\0').decode('utf-8', 'replace')))
-        return cls(seq, windows, next_id, entries, slot_map)
-
-    def used(self):
-        return [(e['first'], e['first'] + e['blocks']) for e in self.entries]
-
-    def find(self, key):
-        for e in self.entries:
-            if e['name'] == key or (key.isdigit() and e['id'] == int(key)):
-                return e
-        raise KeyError(f'no file {key!r}')
+from sample_catalog import Index, logical_length, enable_folders
 
 
 def problems(index):
     """Consistency checks of one index -> list of messages (empty = consistent)."""
-    out, spans, names, ids = [], [], set(), set()
+    out, spans, names, ids = index.metadata_problems(), [], set(), set()
     for e in index.entries:
         lo, hi = e['first'], e['first'] + e['blocks']
         if not (DATA_FIRST_K <= lo < hi <= index.windows):
             out.append(f"{e['name']}: blocks {lo:#x}..{hi:#x} outside the data area")
         if e['blocks'] != -(-e['bytes'] // WINDOW) or e['bytes'] != SAMP_HEADER + 2 * e['frames']:
             out.append(f"{e['name']}: size fields inconsistent")
-        if e['name'] in names or e['id'] in ids:
+        if (e.get('folder',0),e['name']) in names or e['id'] in ids:
             out.append(f"{e['name']}: duplicate name or id")
-        names.add(e['name'])
+        names.add((e.get('folder',0),e['name']))
         ids.add(e['id'])
         if e['id'] >= index.next_id:
             out.append(f"{e['name']}: id {e['id']} >= next_id {index.next_id}")
@@ -381,7 +334,9 @@ class Store:
             if raw[:4] != MAGIC:
                 return HEAD
             count, length = u32(raw, 12), u32(raw, 36)
-            return length if count <= MAX_ENTRIES and length == ENTRIES_OFF + ENTRY * count else HEAD
+            try:expected=logical_length(u32(raw,4),count,u32(raw,40) if u32(raw,4)==2 else 0)
+            except ValueError:return HEAD
+            return length if length==expected else HEAD
 
         with self.activity(phase):
             try:
@@ -403,7 +358,16 @@ class Store:
             raw, size = self.read_index_raw(k)
             if size != WINDOW:
                 raise ValueError('Extended sample storage window is unavailable.')
-            copies.append(Index.unpack(raw))
+            index=Index.unpack(raw)
+            if index is None and raw[:4]==MAGIC:
+                length=u32(raw,36)
+                if ENTRIES_OFF<=length<=len(raw) and crc(raw[:32]+bytes(4)+raw[36:length])==u32(raw,32):
+                    raise ValueError('CRC-valid catalogue has an unsupported or inconsistent header')
+            if index and (problems(index) or (self.windows is not None and index.windows>self.windows)):
+                raise ValueError('CRC-valid catalogue contains inconsistent entries')
+            copies.append(index)
+        if all(copies) and copies[0].seq==copies[1].seq and copies[0].pack()!=copies[1].pack():
+            raise ValueError('Conflicting catalogues with equal sequence')
         return copies
 
     def current(self):
@@ -418,7 +382,9 @@ class Store:
         """Write `index` (seq + 1) over the older copy, then read it back."""
         seqs = [c.seq if c else -1 for c in copies]        # snapshot: `index` may be one of the copies
         target = 0 if seqs[0] <= seqs[1] else 1             # the older (or invalid) copy; A on a tie
+        if max(seqs)>=0xffffffff:raise ValueError('Catalogue sequence exhausted')
         index.seq = max(seqs) + 1 if max(seqs) >= 0 else 1
+        if problems(index):raise ValueError('Inconsistent catalogue')
         body = index.pack()
         with self.activity('Updating sample library'):
             self.write_at(INDEX_K[target], body)
@@ -462,7 +428,7 @@ def cmd_ls(store, log=print):
     return index
 
 
-def cmd_put(store, wav, name=None, *, state=None):
+def cmd_put(store, wav, name=None, *, state=None, folder=0):
     rate, mono = read_wav(wav)
     name = name or Path(wav).stem
     if len(name.encode('utf-8')) > 32:
@@ -472,7 +438,10 @@ def cmd_put(store, wav, name=None, *, state=None):
     pcm = to_pcm16be(resample(mono, rate))
     body, frames = samp_body(pcm, name)
     index, copies = state if state is not None else store.current()
-    if any(e['name'] == name for e in index.entries):
+    index.folder(folder)
+    if folder and index.version!=2:raise ValueError('Enable folders first')
+    logical_length(index.version,len(index.entries)+1,len(index.folders))
+    if any(e['name'] == name and e.get('folder',0)==folder for e in index.entries):
         raise ValueError(f'a file named {name!r} already exists (rm it first)')
     blocks = -(-len(body) // WINDOW)
     first = allocate(blocks, copies, index.windows)
@@ -481,6 +450,7 @@ def cmd_put(store, wav, name=None, *, state=None):
     store.verify_blocks(first, blocks, body)
     entry = dict(id=index.next_id, first=first, blocks=blocks, bytes=len(body), frames=frames, crc=crc(body),
                  created=int(time.time()), flags=0, name=name)
+    if index.version==2:entry['folder']=folder
     index.entries.append(entry)
     index.next_id += 1
     if problems(index):

@@ -10,7 +10,7 @@ import sys
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '0.0.5'
+VERSION = '0.0.6'
 
 
 def main():

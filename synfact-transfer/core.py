@@ -367,11 +367,11 @@ class Manager:
                                     'bytes': e.get('size', 0), 'frames': None})
             result = {'entries': entries, 'stock_used': len(entries), 'stock_total': 64,
                       'high_available': self.profile in ('v6', 'v7'), 'high_error': None,
-                      'free': None, 'used': None, 'total': None, 'sequence': None}
+                      'free': None, 'used': None, 'total': None, 'sequence': None, 'folders': [], 'catalogue_version': 1}
             if result['high_available']:
                 try:
                     high = self.run('hz_list', {}, log, cancelled)
-                    result.update({k: high[k] for k in ('free', 'used', 'total', 'sequence', 'largest', 'copies')})
+                    result.update({k: high[k] for k in ('free', 'used', 'total', 'sequence', 'largest', 'copies', 'folders', 'catalogue_version') if k in high})
                     entries.extend({**e, 'source': 'high', 'key': 'high:' + str(e['id'])} for e in high['entries'])
                 except Cancelled:
                     raise
@@ -388,14 +388,14 @@ class Manager:
                 if rate > H.RATE:
                     raise ValueError('Convert the WAV to 48 kHz before importing.')
                 frames = len(H.resample(mono, rate))
-            stock = self.run('list', {'path': '/samples'}, log, cancelled)['entries']
+            stock = [] if args.get('folder') or args.get('extended') else self.run('list', {'path': '/samples'}, log, cancelled)['entries']
             used = {e['slot'] for e in stock if e.get('valid')}
             free_slot = next((i for i in range(1, 65) if i not in used), None)
             try:
                 stock_name = 0 < len(name.encode('cp1252')) <= 16
             except UnicodeEncodeError:
                 stock_name = False
-            if free_slot and frames <= 5 * H.RATE and stock_name:
+            if not args.get('folder') and not args.get('extended') and free_slot and frames <= 5 * H.RATE and stock_name:
                 log(f'Automatic destination: stock sample slot {free_slot}')
                 self.run('put', {**args, 'path': f'/samples/{free_slot}'}, log, cancelled)
                 return {'source': 'stock', 'slot': free_slot, 'frames': frames}
@@ -413,13 +413,30 @@ class Manager:
                 raise ValueError('The name must contain 1 to 32 UTF-8 bytes.')
             store = H.Store(dev, S, block=READ_BLOCK, rest=READ_REST, log=log)
             index, copies = store.current()
-            if any(e['name'] == name and e['id'] != int(args['id']) for e in index.entries):
+            original=index.find(str(args['id']))
+            if any(e['name'] == name and e.get('folder',0)==original.get('folder',0) and e['id'] != int(args['id']) for e in index.entries):
                 raise ValueError('A sample with this name already exists.')
             index.find(str(args['id']))['name'] = name
             if H.problems(index):
                 raise ValueError('Inconsistent sample index.')
             store.commit(index, copies)
             return {'ok': True}
+        if action.startswith('folder_'):
+            if self.profile not in ('v6','v7'):raise ValueError('Folders require compatible Elekloader firmware')
+            store=H.Store(dev,S,block=READ_BLOCK,rest=READ_REST,log=log)
+            if action=='folder_enable':
+                index=H.enable_folders(store,args['backup'],firmware_confirmed=args.get('confirm_firmware') is True)
+                return {'ok':True,'version':index.version}
+            index,copies=store.current()
+            if index.version!=2:raise ValueError('Enable folders first')
+            if action=='folder_create':ident=index.mkdir(args['name'],int(args.get('parent',0)))
+            elif action=='folder_change':index.change_folder(int(args['id']),name=args.get('name'),parent=int(args['parent']) if 'parent' in args else None)
+            elif action=='folder_remove':index.rmdir(int(args['id']))
+            elif action=='folder_move_samples':index.move_samples([int(i) for i in args['ids']],int(args['folder']))
+            else:raise ValueError('Unknown folder operation')
+            if H.problems(index):raise ValueError('Invalid folder catalogue')
+            store.commit(index,copies)
+            return {'ok':True,**({'id':ident} if action=='folder_create' else {})}
         if action.startswith('hz_'):
             if self.profile not in ('v6', 'v7'):
                 raise ValueError('Extended sample storage requires a compatible loader.')
@@ -440,7 +457,8 @@ class Manager:
                 return {'entries': index.entries, 'sequence': index.seq, 'free': free,
                         'total': total, 'used': total - free,
                         'largest': H.largest_hole(index, index.windows) * H.WINDOW,
-                        'copies': [c.seq if c else None for c in copies]}
+                        'copies': [c.seq if c else None for c in copies],
+                        'folders': index.folders,'catalogue_version': index.version}
             elif action == 'hz_put':
                 index, copies = store.current()
                 if not 1 <= index.next_id <= 0x7fff:
@@ -453,7 +471,7 @@ class Manager:
                     rate, _ = H.read_wav(wav)
                     if rate > H.RATE:
                         raise ValueError('Convert the WAV to 48 kHz before importing to avoid aliasing.')
-                    return H.cmd_put(store, wav, args.get('name'), state=(index, copies))
+                    return H.cmd_put(store, wav, args.get('name'), state=(index, copies), folder=int(args.get('folder',0)))
             elif action == 'hz_get':
                 with tempfile.TemporaryDirectory() as td:
                     out = Path(td) / 'sample.wav'

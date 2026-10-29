@@ -34,8 +34,8 @@
       "file": "vendor/hzfs.py",
       "source": "syntakt-work/loader-v6-hz/hzfs.py",
       "source_sha256": "25f8921eb3e7fc4a4c974efce20b1244a6145204570954b426e5797b5b98111c",
-      "copy_sha256": "882a683bc4fb4c7c26c8b34f2a328f94f2913a7d1b41611eed8614af0cd1b55b",
-      "adaptation": "Import paths adapted; valid indexes read through their declared length and own CRC, with full-window fallback for absent/damaged copies; explicit library progress phases and per-upload reuse of the checked index pair. Upload-only exact verification of used bytes in the final partial sample window, with complete CRC-checked read fallback and no publication on mismatch or cancellation."
+      "copy_sha256": "a31c8e8575630cbf815f25e668246077293006507516b587f819f550f020025b",
+      "adaptation": "Import paths adapted; valid indexes read through their declared length and own CRC, with full-window fallback for absent/damaged copies; explicit library progress phases and per-upload reuse of the checked index pair. Upload-only exact verification of used bytes in the final partial sample window, with complete CRC-checked read fallback and no publication on mismatch or cancellation. HZFS v2 folder table/memberships via shared MIT codec; v1 retained, scoped names and strict metadata validation."
     },
     {
       "file": "vendor/elektron_object.py",
@@ -43,6 +43,13 @@
       "source_sha256": "93ce3edfe3b64653b3d3536809430a8c0efce5891b4bc3262a6a5bcfa0c17b4b",
       "copy_sha256": "93ce3edfe3b64653b3d3536809430a8c0efce5891b4bc3262a6a5bcfa0c17b4b",
       "adaptation": "Unmodified snapshot."
+    },
+    {
+      "file": "vendor/sample_catalog.py",
+      "source": "elekloader/sdk/syntakt/sample_catalog.py",
+      "source_sha256": "55504f028283883866dce1f1bd4df76117783f4f1c90c939c1a76971655a677b",
+      "copy_sha256": "55504f028283883866dce1f1bd4df76117783f4f1c90c939c1a76971655a677b",
+      "adaptation": "Unmodified MIT codec and explicit metadata migration helper. No transport or MIDI on import."
     }
   ]
 }

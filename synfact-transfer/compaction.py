@@ -42,7 +42,8 @@ def rebuild(store, index, folder, report, cancelled):
         raise ValueError('HZFS sequence exhausted; rebuild refused.')
     if cancelled():
         raise RuntimeError('Cancelled before rebuilding. Device unchanged.')
-    current = H.Index(seq=sequence, windows=index.windows, next_id=index.next_id)
+    current = H.Index(seq=sequence, windows=index.windows, next_id=index.next_id,
+                      version=index.version,folders=[dict(d) for d in index.folders],next_folder=index.next_folder)
     # Include the backup sequence even if both device indexes are unreadable.
     copies = [H.Index(seq=sequence), None]
     total = sum(e['bytes'] for e in index.entries)

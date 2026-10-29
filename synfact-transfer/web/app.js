@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 let token=document.querySelector('meta[name="session-token"]').content;
 history.replaceState(null,'',location.pathname);
-const state={connected:false,tab:'drop',category:'projects',bank:'A',sampleBank:'S',rows:[],jobs:[],generation:0};
+const state={connected:false,tab:'drop',category:'projects',bank:'A',sampleBank:'S',folder:0,folders:[],catalogueVersion:1,rows:[],jobs:[],generation:0};
 const waits=new Map(),selected=new Set(),seenErrors=new Set();
 const transferActions=new Set(['put','get','hz_get','hz_rm','hz_compact','hz_restore','clear','sample_put','machine_put','firmware_put','download_group']);
 let scanning=false,paused=false,serviceOnline=false,modalResolve=null,importing=false,activeTransfer=null,pendingDrops=[];
@@ -117,7 +117,7 @@ function completeSlots(entries,count,base){const bySlot=new Map(entries.filter(e
 $('category').onchange=e=>{state.category=e.target.value;refresh()};$('refresh').onclick=refresh;$('search').oninput=renderTable;
 async function refresh(){
  const generation=++state.generation;selected.clear();state.rows=[];
- const samples=state.category==='samples';$('banks').hidden=state.category==='projects';bankButtons();$('download-selected').disabled=true;
+ const samples=state.category==='samples';$('folder-controls').hidden=!samples||state.sampleBank!=='H';$('banks').hidden=state.category==='projects';bankButtons();$('download-selected').disabled=true;
  for(const id of ['compact','restore-backup']){$(id).hidden=!samples||state.sampleBank!=='H';$(id).disabled=true}
  $('restore-backup').disabled=!state.connected||!['v6','v7'].includes(state.profile);
  $('list-label').textContent=samples?(state.sampleBank==='S'?'Stock samples · S1–S64':'High memory samples'):state.category==='projects'?'128 projects':'Bank '+state.bank+' · 256 slots';
@@ -128,8 +128,10 @@ async function refresh(){
   if(samples){const library=await task('sample_list');if(generation!==state.generation)return;
    if(state.sampleBank==='H')$('list-label').textContent=Number.isFinite(library.total)?'High memory · '+capacity(library.used)+' / '+capacity(library.total)+' used · '+capacity(library.free)+' free':'High memory · Storage unavailable';
    $('compact').disabled=!Number.isFinite(library.total);
+   state.folders=library.folders||[];state.catalogueVersion=library.catalogue_version||1;
+   if(state.folder&&!state.folders.some(d=>d.id===state.folder))state.folder=0;folderControls();
    const stock=new Map(library.entries.filter(e=>e.source==='stock').map(e=>[e.slot,e]));
-   state.rows=state.sampleBank==='S'?Array.from({length:64},(_,i)=>{const e=stock.get(i+1);return {...e,source:'stock',slot:i+1,path:'/samples/'+(i+1),key:'stock:'+(i+1),name:e?.name||'',valid:!!e,bytes:e?.bytes||0}}):library.entries.filter(e=>e.source==='high').map(e=>({...e,valid:true}));
+   state.rows=state.sampleBank==='S'?Array.from({length:64},(_,i)=>{const e=stock.get(i+1);return {...e,source:'stock',slot:i+1,path:'/samples/'+(i+1),key:'stock:'+(i+1),name:e?.name||'',valid:!!e,bytes:e?.bytes||0}}):folderRows(library.entries,state.folders,state.folder);
    if(state.sampleBank==='H'&&library.high_error)message('Extended sample storage is unavailable.');
   }else{const result=await task('list',{path:path()});if(generation!==state.generation)return;state.rows=completeSlots(result.entries,state.category==='projects'?128:256,path())}
   $('search').value='';renderTable();
@@ -140,13 +142,37 @@ function renderTable(){
  const q=$('search').value.toLowerCase(),rows=state.rows.filter(e=>(e.name+' '+e.slot+' '+e.key).toLowerCase().includes(q));
  $('empty-state').hidden=rows.length>0;if(!rows.length)$('empty-state').textContent=state.connected?(q?'No results':'No files'):'Connect your device to browse files.';
  $('table-head').innerHTML='<tr><th class="select-cell"><input id="select-all" type="checkbox" aria-label="Select all"></th>'+(high?'':'<th>Slot</th>')+'<th>Name</th><th>Size</th><th></th></tr>';
- $('table-body').innerHTML=rows.map(e=>'<tr data-slot-key="'+esc(e.key)+'" class="'+(selected.has(e.key)?'selected':'')+'"><td class="select-cell"><input type="checkbox" aria-label="Select '+esc(e.name||e.slot)+'" data-select="'+esc(e.key)+'" '+(selected.has(e.key)?'checked':'')+' '+(!e.valid?'disabled':'')+'></td>'+(high?'':'<td class="number">'+(state.category==='samples'?'S'+e.slot:String(e.slot).padStart(3,'0'))+'</td>')+'<td class="'+(!e.valid?'empty-slot':'')+'">'+esc(e.name||'—')+'</td><td>'+(e.valid?size(e.bytes||0):'—')+'</td><td class="row-actions">'+(e.valid?'<button data-get="'+esc(e.key)+'">Download</button><button data-remove="'+esc(e.key)+'">Delete</button>':'')+'</td></tr>').join('');
+ $('table-body').innerHTML=rows.map(e=>'<tr data-slot-key="'+esc(e.key)+'" class="'+(selected.has(e.key)?'selected':'')+'"><td class="select-cell"><input type="checkbox" aria-label="Select '+esc(e.name||e.slot)+'" data-select="'+esc(e.key)+'" '+(selected.has(e.key)?'checked':'')+' '+(!e.valid?'disabled':'')+'></td>'+(high?'':'<td class="number">'+(state.category==='samples'?'S'+e.slot:String(e.slot).padStart(3,'0'))+'</td>')+'<td class="'+(!e.valid?'empty-slot':'')+'">'+esc(e.name||'—')+'</td><td>'+(e.valid?size(e.bytes||0):'—')+'</td><td class="row-actions">'+(e.directory?'<button data-open-folder="'+e.id+'">Open</button>':e.valid?'<button data-get="'+esc(e.key)+'">Download</button><button data-remove="'+esc(e.key)+'">Delete</button>':'')+'</td></tr>').join('');
  const all=$('select-all');all.checked=rows.some(e=>e.valid)&&rows.filter(e=>e.valid).every(e=>selected.has(e.key));all.onchange=()=>{for(const e of rows.filter(e=>e.valid))all.checked?selected.add(e.key):selected.delete(e.key);renderTable()};
+ document.querySelectorAll('[data-open-folder]').forEach(b=>b.onclick=()=>{state.folder=Number(b.dataset.openFolder);refresh()});
  document.querySelectorAll('[data-select]').forEach(b=>b.onchange=()=>{b.checked?selected.add(b.dataset.select):selected.delete(b.dataset.select);updateSelection();b.closest('tr').classList.toggle('selected',b.checked)});
  document.querySelectorAll('[data-get]').forEach(b=>b.onclick=()=>getFile(state.rows.find(e=>e.key===b.dataset.get)).then(download).catch(e=>message(e.message)));
  document.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>removeRow(state.rows.find(e=>e.key===b.dataset.remove)));updateSelection();
 }
 function updateSelection(){$('download-selected').disabled=!selected.size;$('download-selected').textContent=selected.size?'Download ('+selected.size+')':'Download'}
+function folderRows(entries,folders,current){
+ return [...folders.filter(d=>d.parent===current).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({...d,directory:true,key:'folder:'+d.id,valid:false})),
+ ...entries.filter(e=>e.source==='high'&&(e.folder||0)===current).map(e=>({...e,valid:true}))];
+}
+function folderPath(id){
+ const parts=[],seen=new Set();while(id){if(seen.has(id))return '/';seen.add(id);const d=state.folders.find(d=>d.id===id);if(!d)return '/';parts.unshift(d.name);id=d.parent}return '/'+parts.join('/');
+}
+function folderOptions(id){return '<option value="0"'+(!id?' selected':'')+'>/</option>'+state.folders.map(d=>'<option value="'+d.id+'"'+(id===d.id?' selected':'')+'>'+esc(folderPath(d.id))+'</option>').join('')}
+function folderControls(){
+ const on=state.catalogueVersion===2;$('folder-enable').hidden=on;$('folder-up').disabled=!state.folder;
+ for(const name of ['folder-new','folder-edit','folder-delete','folder-move'])$(name).disabled=!on;
+ $('folder-edit').disabled=!on||!state.folder;$('folder-delete').disabled=!on||!state.folder;
+ $('folder-path').textContent=folderPath(state.folder);
+}
+$('folder-up').onclick=()=>{state.folder=state.folders.find(d=>d.id===state.folder)?.parent||0;refresh()};
+$('folder-enable').onclick=async()=>{
+ const result=await ask('Enable sample folders','<p>Install Elekloader core 0.13 or newer first. Older firmware cannot read the updated library. Stop playback and close Sample Manager.</p><p>A metadata backup is saved before conversion. Audio and sample IDs stay in place.</p><label>New backup folder (absolute path)<input name="backup" required></label><label><input type="checkbox" name="firmware" required> Folder-capable firmware is installed</label>','Enable');
+ if(!result)return;try{await task('folder_enable',{backup:result.backup,confirm_firmware:!!result.firmware,confirm:true});refresh()}catch(e){message(e.message)}
+};
+$('folder-new').onclick=async()=>{const r=await ask('New folder','<label>Name<input name="name" maxlength="32" required></label>','Create');if(!r)return;try{await task('folder_create',{name:r.name,parent:state.folder,confirm:true});refresh()}catch(e){message(e.message)}};
+$('folder-edit').onclick=async()=>{const d=state.folders.find(d=>d.id===state.folder);if(!d)return;const r=await ask('Edit folder','<label>Name<input name="name" value="'+esc(d.name)+'" required></label><label>Parent<select name="parent">'+folderOptions(d.parent)+'</select></label>','Save');if(!r)return;try{await task('folder_change',{id:d.id,name:r.name,parent:Number(r.parent),confirm:true});refresh()}catch(e){message(e.message)}};
+$('folder-delete').onclick=async()=>{if(!state.folder)return;const r=await ask('Delete empty folder','<p>'+esc(folderPath(state.folder))+'</p>','Delete');if(!r)return;try{await task('folder_remove',{id:state.folder,confirm:true});state.folder=0;refresh()}catch(e){message(e.message)}};
+$('folder-move').onclick=async()=>{const ids=state.rows.filter(e=>e.valid&&selected.has(e.key)).map(e=>e.id);if(!ids.length){message('Select samples to move.');return}const r=await ask('Move samples','<label>Destination<select name="folder">'+folderOptions(state.folder)+'</select></label>','Move');if(!r)return;try{await task('folder_move_samples',{ids,folder:Number(r.folder),confirm:true});refresh()}catch(e){message(e.message)}};
 function fileArgs(e){return {path:e.path,id:e.id,source:e.source,name:e.name,bytes:e.bytes}}
 function getFile(e){return task(e.source==='high'?'hz_get':'get',fileArgs(e))}
 async function rebuildHigh(restore=false){
@@ -167,7 +193,7 @@ $('add').onclick=async()=>{
  if(!state.connected){message('Connect your device first.');return}
  const sample=state.category==='samples',type=state.category,max=type==='projects'?128:256,base=sample?null:path(),free=state.rows.find(e=>!e.valid)?.slot||1;
  const result=await ask(sample?'Add samples':'Add file','<label>File<input id="upload" type="file" name="upload" accept="'+(sample?'.wav':type==='projects'?'.stprj':'.stsnd,.dnsnd')+'" '+(sample?'multiple':'')+' required></label>'+(sample?'':'<label>Slot<input name="slot" type="number" min="1" max="'+max+'" value="'+free+'" required></label>'),'Upload');
- if(!result)return;const files=[...$('upload').files];try{const extensions=sample?['.wav']:type==='projects'?['.stprj']:['.stsnd','.dnsnd'];if(files.some(file=>!extensions.some(ext=>file.name.toLowerCase().endsWith(ext))))throw Error('Choose '+extensions.join(' or ')+' files only.');for(const file of files)await task(sample?'sample_put':'put',{data:await data(file),filename:file.name,name:file.name.replace(/\.[^.]+$/,''),...(sample?{}:{path:base+'/'+result.slot}),confirm:true});refresh()}catch(e){message(e.message)}
+ if(!result)return;const files=[...$('upload').files];try{const extensions=sample?['.wav']:type==='projects'?['.stprj']:['.stsnd','.dnsnd'];if(files.some(file=>!extensions.some(ext=>file.name.toLowerCase().endsWith(ext))))throw Error('Choose '+extensions.join(' or ')+' files only.');for(const file of files)await task(sample?'sample_put':'put',{data:await data(file),filename:file.name,name:file.name.replace(/\.[^.]+$/,''),...(sample?{folder:state.sampleBank==='H'?state.folder:0,extended:state.sampleBank==='H'}:{path:base+'/'+result.slot}),confirm:true});refresh()}catch(e){message(e.message)}
 };
 async function importFiles(files,targetKey){
  if(importing){message('Wait for the current transfer to finish.');return}if(!state.connected){message('Connect your device first.');return}importing=true;
@@ -180,7 +206,7 @@ async function importFiles(files,targetKey){
   if((!sample||stock)&&(!first||first+files.length-1>max))throw Error('Not enough consecutive slots.');
   const replace=(!sample||stock)&&files.some((_,i)=>state.rows.find(e=>e.slot===first+i&&(stock?e.source==='stock':true))?.valid);
   if(replace&&!await ask('Replace occupied slots?','<p>'+files.map(f=>esc(f.name)).join('<br>')+'</p>','Replace'))return;
-  for(let i=0;i<files.length;i++){const file=files[i];await task(sample&&!stock?'sample_put':'put',{data:await data(file),filename:file.name,name:file.name.replace(/\.[^.]+$/,''),...(sample&&!stock?{}:{path:(stock?'/samples':path())+'/'+(first+i)}),confirm:true})}
+  for(let i=0;i<files.length;i++){const file=files[i];await task(sample&&!stock?'sample_put':'put',{data:await data(file),filename:file.name,name:file.name.replace(/\.[^.]+$/,''),...(sample&&!stock?{folder:state.folder,extended:true}:{path:(stock?'/samples':path())+'/'+(first+i)}),confirm:true})}
   message('Upload complete.');
  }catch(e){message(e.message)}finally{importing=false;refresh()}
 }

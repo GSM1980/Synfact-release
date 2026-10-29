@@ -320,3 +320,36 @@ Bundled runtime components retain their own licenses.
 
 If you would like to help the project grow,
 [support this project on Ko-fi](https://ko-fi.com/ggsm80).
+
+
+## Sample folders (0.0.6)
+
+Requires Elekloader core 0.13.0 and the matching Sample Manager SMZ module for
+navigation on the instrument. Install both first. The generic legacy connection
+profile v6/v7 alone does not mean the firmware supports folder catalogues.
+
+In Explore -> Samples -> H, choose Enable folders, confirm compatible firmware
+is installed, and enter a NEW absolute local backup directory. Close Sample
+Manager and stop playback for migration. Transfer verifies metadata backups
+before writing and mirrors the new catalogue into both A/B windows. This does
+not rewrite PCM or IDs. Older firmware/tools cannot use the v2 library. If
+migration is interrupted, keep the new firmware installed and repeat Enable
+folders with a new backup path. These migration backups contain metadata only,
+not the samples themselves.
+
+New folder creates a child of the current folder. Open/Up navigate; Edit folder
+renames or changes its parent. Move selected changes the selected sample IDs'
+folder membership; duplicate names within a destination are rejected. Delete
+empty folder refuses non-empty trees. WAVs added/dropped in H are stored in its
+current folder (even short WAVs); stock S1–S64 stays separate. Names use at most
+32 UTF-8 bytes each. Maximum depth 16, at most 1024 live folders. The firmware's
+native font still limits which characters display on the instrument.
+
+Project pools remain flat and moving samples never changes their references.
+Recorder saves new takes at root. Compaction/recovery retain folder IDs, parent
+relationships and memberships, including empty folders.
+
+Offline tests: Python catalogue operations plus the simulated Data RPC device,
+full migration, rejected metadata/cycles, scoped imports, compaction, and
+`node tests/test_transfer_folders_ui.js` for navigation and escaped UI names.
+No physical migration or device transfer has been performed for this version.
