@@ -31,12 +31,24 @@ vm.runInContext(source.slice(0,source.indexOf('function changeTab(')),context);
   tick();
  `,context);
  assert.equal(element('transfer-detail').textContent,'Downloading · 0 B');
- for(const phase of ['Checking sample library','Checking sample storage','Updating sample library','Verifying sample library']){
+ for(const phase of ['Checking sample library','Checking sample storage','Updating sample library','Verifying sample library','Verifying sample (full read)']){
   await vm.runInContext(`
    api=async()=>({connected:true,jobs:[{id:'read',status:'running',progress:{phase:${JSON.stringify(phase)},current:0,total:0,kib_s:0}}]});
    tick();
   `,context);
   assert.equal(element('transfer-detail').textContent,phase+' · 0 B');
  }
+ await vm.runInContext(`
+  api=async()=>({connected:true,jobs:[{id:'read',status:'running',progress:{phase:'Verifying sample',current:192,total:192,kib_s:10}}]});
+  tick();
+ `,context);
+ assert.equal(element('transfer-progress').value,100);
+ assert.match(element('transfer-detail').textContent,/Verifying sample.*100%.*192 B \/ 192 B/);
+ await vm.runInContext(`
+  api=async()=>({connected:true,jobs:[{id:'read',status:'running',progress:{phase:'Verifying',current:2048,total:524331,kib_s:140}}]});
+  tick();
+ `,context);
+ assert.equal(element('transfer-progress').value,0);
+ assert.match(element('transfer-detail').textContent,/Verifying.*0%/);
  console.log('Transfer progress UI checks passed.');
 })().catch(error=>{console.error(error);process.exitCode=1});

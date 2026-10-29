@@ -1,4 +1,4 @@
-# Synfact Transfer 0.0.4
+# Synfact Transfer 0.0.5
 
 Synfact Transfer is a desktop application for managing local device transfers
 over USB MIDI. It provides a desktop window, file selection dialogs and a modal
@@ -14,6 +14,35 @@ application. Once that package has been built, running it does not require a
 separate Python, Qt or browser installation.
 
 ## Changelog
+
+### Unreleased
+
+- Dragged `.smz4` banks now upload to Elekloader's native `/mods` endpoint,
+  using the same uncompressed Data object as its CLI, with exact readback.
+  SAFE v2 banks and the 16 MiB endpoint limit are recognized. Download and
+  detection also use `/mods`; `/samples/449` is retired, with no fallback.
+  Bank transfer no longer reads or initializes extended sample storage.
+- Digitone import now targets the current Elekloader FM TONE layout. The
+  canonical converter is maintained in Elekloader's `mods/fm-tone-st/tools/`;
+  Transfer uses its vendored copy. RATIO B uses one word, all four ratio
+  offsets are preserved, and LFO destinations follow the current slots.
+- Imported AMP uses ADSR and a minimum ATK of 8, preserving larger attacks
+  and the source DEC/SUS/REL/RESET. The old Synfact layout is not the import
+  destination; existing Syntakt `.stsnd` files remain unchanged.
+
+### 0.0.5
+
+- Short high-memory sample uploads verify only the used bytes of their final
+  storage window instead of downloading its unused 512 KiB padding. Every
+  uploaded byte is compared before catalog publication. Full windows retain
+  outer-object CRC checks; prefix errors/mismatches fall back to a complete
+  checked read. Cancellation and connection loss do not retry or publish.
+- Sample verification progress uses the sample's used bytes. Complete reads
+  use the object's announced size, rather than a previous upload's size, so
+  the bar does not reach 100% while still reading unrelated window padding.
+- Catalog A/B commits and CRC checks, standalone downloads, compaction and
+  deep library checks retain their existing integrity paths. No firmware or
+  device storage-format update is required. Device testing remains pending.
 
 ### 0.0.4
 
@@ -47,17 +76,19 @@ separate Python, Qt or browser installation.
 - **Drop:** upload firmware (`.syx`) or mods (`.smz4`). Current SAFE envelopes
   and legacy mods headers are supported. The original file is transferred
   unchanged and verified by readback; the application does not build firmware.
-  Mods uploads check extended storage directly, including on a first installation.
-  If both HZFS indexes are absent, the app initializes and verifies them before
-  uploading mods. Existing valid indexes and samples are preserved; read errors
-  or damaged HZFS indexes stop the upload. Run the modified firmware and finish
-  its restart procedure before uploading mods.
+  Mods use Elekloader's native `/mods` endpoint, without a sample header or
+  padding, and require firmware exposing that endpoint. Upload, download and
+  detection do not fall back to the retired `/samples/449` path. Bank uploads
+  do not read or initialize the sample library. Restart the device after
+  uploading to load the bank.
 - **Projects:** browse 128 slots and import/export `.stprj` files.
 - **Sounds:** browse banks A–H and import/export `.stsnd` files. Import Digitone
   `.dnsnd` sounds using Add file or drag and drop in Sounds; they are converted
-  locally to FM TONE before upload. Compatible Synfact firmware and FM TONE mods
-  are required. Digitone sound record versions 1–6 are supported. Chorus and
-  arpeggiator data are ignored. Ratio offsets, amp drive and velocity/controller
+  locally to Elekloader FM TONE before upload. The current Elekloader core and
+  FM TONE mods with one stored RATIO B control are required. Digitone sound
+  record versions 1–6 are supported. AMP ATK has a minimum of 8; larger attacks
+  are preserved. All four ratio offsets are imported. Chorus and arpeggiator
+  data are ignored. Amp drive and velocity/controller
   assignments are not imported; unsupported LFO destinations become none.
   Filters and effects may sound different. Conversion notes appear in the job log.
 - **Samples:** import WAV audio, browse stock and extended storage, download
@@ -244,10 +275,10 @@ when the pinned binary wheels are available.
 
 | Build | Application | Distribution |
 | --- | --- | --- |
-| Windows portable | `dist/SynfactTransfer/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.4-Windows-AMD64.zip` |
-| Windows single file | `dist/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.4-Windows-AMD64-single.zip` |
-| Mac Apple Silicon | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.4-macOS-arm64.zip` |
-| Mac Intel | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.4-macOS-x86_64.zip` |
+| Windows portable | `dist/SynfactTransfer/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.5-Windows-AMD64.zip` |
+| Windows single file | `dist/SynfactTransfer.exe` | `releases/SynfactTransfer-0.0.5-Windows-AMD64-single.zip` |
+| Mac Apple Silicon | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.5-macOS-arm64.zip` |
+| Mac Intel | `dist/SynfactTransfer.app` | `releases/SynfactTransfer-0.0.5-macOS-x86_64.zip` |
 
 Close the running app before rebuilding into the same directory, especially on
 Windows, where loaded Qt libraries cannot be replaced. Temporary build files

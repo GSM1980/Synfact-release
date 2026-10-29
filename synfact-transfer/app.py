@@ -180,7 +180,7 @@ class Service:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'SynfactTransfer/0.0.4'
+    server_version = 'SynfactTransfer/0.0.5'
 
     def log_message(self, *_):
         pass

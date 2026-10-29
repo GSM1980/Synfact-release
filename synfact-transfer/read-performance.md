@@ -51,7 +51,7 @@ python tools/benchmark_transfer_reads.py --path /samples/1 --blocks 2048 --rests
 ```
 
 Use an existing stock sample, sound or project. The benchmark also accepts the
-mods read path `/samples/449` and raw read windows. Its transport permits only
+mods read path `/mods` and raw read windows. Its transport permits only
 DataReadOpen, DataReadPartial and DataReadClose. It prints timings, hashes and
 errors as JSON lines, and returns a nonzero exit status for failed reads.
 It never saves object contents. Local measurement files are kept under the
@@ -87,3 +87,46 @@ a duplicate pair of reads. Index commits also verify only the used index bytes.
 The UI now distinguishes **Checking sample library**, **Checking sample storage**,
 **Updating sample library**, and **Verifying sample library** from actual file
 upload/download and verification phases.
+
+## 0.0.5: sample upload readback (2026-10-28)
+
+Offline traces through the real upload path and the in-memory RPC simulator
+found that the final short sample window was still being read in full. A
+192-byte SAMP+PCM body caused 524,331 bytes of audio verification traffic.
+The used catalog prefixes were already optimized in 0.0.3; ordinary uploads
+do not reread the PCM of older samples. Catalog reads/writes still grow by
+64 bytes per entry and are committed separately for every upload.
+
+`Store.verify_blocks` now compares all uploaded bytes before publishing the
+new entry. Full sample windows keep their complete object/footer CRC checks.
+Only the last partial window uses the existing bounded raw prefix reader;
+it validates the object identity/size, requests an explicit close and compares
+the entire used prefix with the exact bytes sent. Unused old padding is outside
+the sample. A prefix error or mismatch triggers a complete CRC-checked read;
+a persistent mismatch leaves both catalog copies unchanged. Cancellation and
+connection loss do not retry or commit. Downloads, compaction and deep checks
+continue to use the complete-read path.
+
+With 2 KiB read requests, that 192-byte body now needs one 2,048-byte partial.
+Total receive payload during one upload (catalog A/B, new audio, catalog commit
+readback), excluding protocol envelope bytes, is:
+
+| Existing library entries | 0.0.4 | 0.0.5 |
+| --- | ---: | ---: |
+| 1 or 10 | 530,475 bytes | 8,192 bytes |
+| 130 | 555,051 bytes | 32,768 bytes |
+| 1,000 | 720,939 bytes | 198,656 bytes |
+
+These are simulator byte counts, not hardware speed measurements. Corrupt or
+unsupported prefix reads can still use the slower full-read fallback.
+
+The verification UI reports logical used bytes for the sample-prefix scope.
+Full reads derive their total from the returned object header (including
+fragmented headers) instead of retaining a previous write's total. Conservative
+fallback reads show an indeterminate **Verifying sample (full read)** phase.
+
+Regression coverage includes small and multi-window samples, read boundaries,
+transient/persistent corruption, missing/expected close responses, cancellation,
+connection loss, unchanged catalog copies on failed verification and corrected
+UI totals. Run `python -m unittest discover -s tests -p 'test_transfer*.py'`
+and `node tests/test_transfer_progress_ui.js` from the repository root.

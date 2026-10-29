@@ -25,7 +25,7 @@ def main():
     QLocale.setDefault(QLocale(QLocale.Language.English))
     application = QApplication(sys.argv[:1])
     application.setApplicationName('Synfact Transfer')
-    application.setApplicationVersion('0.0.4')
+    application.setApplicationVersion('0.0.5')
     application.setOrganizationName('Synfact')
     server = make_server(0)
     serving = threading.Thread(target=server.serve_forever, daemon=True)
@@ -109,7 +109,7 @@ def main():
         def __init__(self):
             super().__init__()
             self.closing = self.finished = False
-            self.setWindowTitle('Synfact Transfer 0.0.4')
+            self.setWindowTitle('Synfact Transfer 0.0.5')
             self.resize(1120, 780)
             self.setMinimumSize(800, 600)
             self.setWindowIcon(QIcon(str(Path(__file__).parent / 'assets' / 'synfact.svg')))

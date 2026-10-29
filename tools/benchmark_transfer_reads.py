@@ -72,9 +72,11 @@ def main():
             or any(not 0 <= r <= 1 for r in args.rests)):
         parser.error('Use positive block sizes up to 32768 and rests between 0 and 1 second.')
     for path in args.path:
+        if path == '/mods':
+            continue
         if re.fullmatch(r'/samples/[1-9][0-9]*', path):
             slot = int(path.rsplit('/', 1)[1])
-            if slot == 449 or C.D.RAW_FIRST_N <= slot < C.D.RAW_FIRST_N + C.D.MAX_WINDOWS:
+            if C.D.RAW_FIRST_N <= slot < C.D.RAW_FIRST_N + C.D.MAX_WINDOWS:
                 continue
         C.device_path(path)
     device = None
