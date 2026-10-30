@@ -25,7 +25,6 @@ import files_host as F
 import elektron_object as E
 import compaction
 import digitone
-import mods_file as M
 from midi_io import MidiDevice, ConnectionLost, ports
 
 # The pinned RtMidi 1.5.8 cannot enlarge WinMM's SysEx buffers. Hardware reads
@@ -131,10 +130,8 @@ def directory(path):
 
 
 def machine_info(data):
-    if len(data) > M.MAX_BYTES:
-        raise ValueError('The mods file exceeds the /mods limit of 16 MiB.')
-    if data[:8] == b'SAFE\0\0\0\x02':
-        return M.bank_info(data)
+    if len(data) > F.SLOT_BYTES - F.HEADER:
+        raise ValueError('The mods file exceeds the mods slot size.')
     if data[:4] == b'SAFE':
         if len(data) < 48:
             raise ValueError('Incomplete SAFE mods header.')
@@ -166,7 +163,7 @@ def machine_info(data):
     zone_magic = magic == b'SMZ4' or re.fullmatch(rb'S[0-9]{1,2}Z[0-9]?', magic) is not None
     if len(data) < 32 or not zone_magic:
 
-        raise ValueError('A valid mods file is required.')
+        raise ValueError('A valid mods file fitting in the mods slot is required.')
     image, nrel, nsites, init, check, off, size = struct.unpack_from('>7I', data, 4)
     start, end = 32 + 4 * (nrel + nsites), 32 + 4 * (nrel + nsites) + image
     if not nsites or nsites > 256 or end > len(data) or init >= image or (end - 32) % 4:
@@ -189,7 +186,7 @@ def machine_info(data):
             raise ValueError('Invalid audio table.')
         types = [S.u32(data, off + 16 + 16 * i) for i in range(count)]
     return {'bytes': len(data), 'sites': nsites, 'machines': types, 'image_bytes': image, 'format': magic.decode('ascii'),
-            'sha256': hashlib.sha256(data).hexdigest(), 'path': M.PATH}
+            'sha256': hashlib.sha256(data).hexdigest(), 'path': '/samples/449'}
 
 
 class Transport:
@@ -201,19 +198,16 @@ class Transport:
         self.phase_started = 0
         self.phase_current = 0
         self.activity_label = None
-        self.activity_read_bytes = None
-        self.read_header = bytearray()
-        self.read_total = 0
 
     @contextlib.contextmanager
-    def activity(self, label, *, read_bytes=None):
-        previous = self.activity_label, self.activity_read_bytes
-        self.activity_label, self.activity_read_bytes = label, read_bytes
-        self.report(0, read_bytes or 0, label)
+    def activity(self, label):
+        previous = self.activity_label
+        self.activity_label = label
+        self.report(0, 0, label)
         try:
             yield
         finally:
-            self.activity_label, self.activity_read_bytes = previous
+            self.activity_label = previous
 
     def report(self, current, total, phase):
         now = time.monotonic()
@@ -245,23 +239,12 @@ class Transport:
                 self.report(S.u32(rx, 14), self.total, self.activity_label or 'Uploading')
             elif t == 0x54:
                 self.received = 0
-                self.read_header = bytearray()
-                self.read_total = 0
-                self.report(0, self.activity_read_bytes or 0,
+                self.report(0, 0 if self.activity_label else self.total,
                             self.activity_label or ('Verifying' if self.verifying else 'Downloading'))
             elif t == 0x55 and len(rx) >= 27:
                 self.received += S.u32(rx, 23)
-                self.read_header.extend(rx[27:27 + min(S.u32(rx, 23), D.HEADER - len(self.read_header))])
-                if len(self.read_header) == D.HEADER and S.u32(self.read_header, 0) == D.OBJECT_MAGIC:
-                    self.read_total = D.HEADER + S.u32(self.read_header, 25) + D.FOOTER
-                current = self.received
-                total = self.read_total or (self.received if rx[18] else 0)
-                if self.activity_read_bytes is not None:
-                    current = min(max(0, self.received - D.HEADER), self.activity_read_bytes)
-                    total = self.activity_read_bytes
-                elif self.activity_label:
-                    total = 0
-                self.report(current, total,
+                total = self.total if self.verifying else (self.received if rx[18] else 0)
+                self.report(self.received, 0 if self.activity_label else total,
                             self.activity_label or ('Verifying' if self.verifying else 'Downloading'))
             elif t in (0x56, 0x59) and len(rx) >= 6 and rx[5]:
                 self.finish_phase()
@@ -545,18 +528,25 @@ class Manager:
             S._ok(dev.call(typ, payload), action)
             return {'ok': True}
         if action.startswith('machine_'):
-            path = M.PATH
+            if action != 'machine_put' and self.profile == 'stock':
+                raise ValueError('Mods files require mods loader V4 or later.')
+            path = '/samples/449'
             if action == 'machine_get':
-                data = M.unpack(read_object(dev, path))
-                info = machine_info(data)
-                return {**info, **self.download(data, 'mods.smz4')}
+                obj = read_object(dev, path)
+                parsed = F.parse_object(obj)
+                if not parsed['crc_ok'] or not parsed['footer_ok']:
+                    raise ValueError('Mods file CRC mismatch.')
+                info = machine_info(parsed['data'])
+                return {**info, **self.download(parsed['data'], 'mods.smz4')}
             if action == 'machine_put':
                 data = base64.b64decode(args['data'], validate=True)
                 info = machine_info(data)
-                obj = M.pack(data)
-                if not S.data_write(dev, path, [obj[:-12], obj[-12:]], block=2048, rest=WRITE_REST):
+                parts = F.build_object(449, data, args.get('name', 'MODS'))
+                self.prepare_mods_storage(dev, log)
+                if not S.data_write(dev, path, parts, block=8192, rest=WRITE_REST):
                     raise RuntimeError('Write not confirmed.')
-                if M.unpack(read_object(dev, path)) != data:
+                parsed = F.parse_object(read_object(dev, path))
+                if not parsed['crc_ok'] or not parsed['footer_ok'] or parsed['data'] != data:
                     raise RuntimeError('Mods file verification failed.')
                 self.profile = 'v7' if info['format'] == 'SAFE' or info['sites'] == 77 else 'v6'
                 log('Mods file uploaded and verified. Restart your device to load it.')
@@ -593,13 +583,50 @@ class Manager:
             return {'frames': len(frames), 'installed': None}
         raise ValueError('Unknown action.')
 
+    def prepare_mods_storage(self, dev, log):
+        # Probe the firmware through raw reads instead of the cached profile:
+        # first installations have neither mods nor an HZFS index to detect.
+        log('Checking extended sample storage before uploading mods...')
+        store = H.Store(dev, S, block=READ_BLOCK, rest=READ_REST, write_block=8192, write_rest=0, log=log)
+        copies, damaged = [], False
+        for k in H.INDEX_K:
+            if dev.cancelled():
+                raise Cancelled('Transfer cancelled.')
+            try:
+                raw, size = store.read_index_raw(k, 'Checking sample storage')
+            except Exception as error:
+                if dev.cancelled():
+                    raise Cancelled('Transfer cancelled.') from error
+                raise RuntimeError('Cannot read extended storage. Check the MIDI connection and make sure the Synfact firmware is running after restart.') from error
+            if size != H.WINDOW:
+                raise RuntimeError('Extended storage is unavailable. Install the Synfact firmware, restart the device, and reconnect before uploading mods.')
+            try:
+                index = H.Index.unpack(raw)
+            except (ValueError, struct.error):
+                index = None
+            copies.append(index)
+            damaged |= raw[:4] == H.MAGIC and index is None
+        if any(copies):
+            log('Existing extended sample storage preserved.')
+            return
+        if damaged:
+            raise RuntimeError('HZFS indexes are damaged or incompatible. Automatic initialization stopped to preserve existing samples.')
+        log('Initializing extended sample storage for first use...')
+        try:
+            H.cmd_init(store)
+        except Exception as error:
+            if dev.cancelled():
+                raise Cancelled('Transfer cancelled.') from error
+            raise
+
     def detect_profile(self, log):
         profile = 'stock'
         try:
-            info = machine_info(M.unpack(read_object(self.dev, M.PATH, log=log)))
-            profile = 'v7' if info['format'] == 'SAFE' or info['sites'] == 77 else 'v4'
-            if info.get('loader') == 'elekloader':
-                return profile
+            obj = read_object(self.dev, '/samples/449', log=log)
+            parsed = F.parse_object(obj)
+            if parsed['crc_ok'] and parsed['footer_ok']:
+                info = machine_info(parsed['data'])
+                profile = 'v7' if info['format'] == 'SAFE' or info['sites'] == 77 else 'v4'
         except ConnectionLost:
             raise
         except Exception:

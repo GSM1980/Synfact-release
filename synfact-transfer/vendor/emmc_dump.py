@@ -149,17 +149,16 @@ class Reader:
         finally:
             self.dev.call(st.T_RD_CLOSE, be32(job))
 
-    def window_prefix(self, k, length, *, label='index'):
-        """Read a bounded body prefix; caller must validate all returned bytes.
+    def window_prefix(self, k, length):
+        """Read a bounded body prefix; caller must validate its own checksum.
 
         `length(prefix)` selects the required body length from its header. The
-        surrounding object's footer is not read. HZFS indexes validate their
-        own CRC; upload readback compares every used byte with the sent data.
-        Callers retain full-read fallback on errors or validation failure.
+        surrounding object's footer is not read; this is for self-checking data
+        such as HZFS indexes. Missing/invalid indexes use a full read instead.
         """
         st, n = self.st, RAW_FIRST_N + k
         rx = st._ok(self.dev.call(st.T_RD_OPEN, f'/samples/{n}'.encode() + b'\0'
-                                 + be32(self.block) + b'\0'), f'Read {label} open')
+                                 + be32(self.block) + b'\0'), 'Read index open')
         job, data, seq, empty = u32(rx, 6), bytearray(), 0, 0
         target = None
         try:
@@ -167,7 +166,7 @@ class Reader:
                 if self.rest:
                     time.sleep(self.rest)
                 rx = st._ok(self.dev.call(st.T_RD_PART, be32(job) + be32(seq), timeout=10),
-                            f'Read {label} partial')
+                            'Read index partial')
                 if len(rx) < 27 or u32(rx, 6) != job:
                     raise ValueError('Invalid index read reply.')
                 size = u32(rx, 23)
@@ -196,7 +195,7 @@ class Reader:
         finally:
             reply = self.dev.call(st.T_RD_CLOSE, be32(job))
             # OS 1.41 closes an intentionally partial job with this diagnostic.
-            # HZFS validates the prefix independently (CRC or exact comparison).
+            # The used index bytes are checked against their own CRC by HZFS.
             if reply is None or len(reply) < 6:
                 raise ValueError('Missing index read close response.')
             if not reply[5] and st.cstr(reply, 6)[0] != 'Reader did not complete':

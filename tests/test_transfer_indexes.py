@@ -146,6 +146,13 @@ class IndexReadTests(unittest.TestCase):
                                         'Verifying sample library'})
         self.assertEqual(C.H.Index.unpack(self.device.card[self.device.writes[0][0]]).seq, 4)
 
+    def test_mods_preflight_uses_short_reads_without_writes_or_download_labels(self):
+        self.install_index()
+        C.Manager().prepare_mods_storage(self.transport, self.logs.append)
+        self.assertEqual(self.device.received, 4096)
+        self.assertEqual(self.device.writes, [])
+        self.assertEqual(self.phases(), {'Checking sample storage'})
+
     def test_sample_upload_reads_initial_index_pair_once(self):
         self.install_index()
         wav = io.BytesIO()
@@ -164,7 +171,7 @@ class IndexReadTests(unittest.TestCase):
         self.assertEqual(result['id'], 3)
         self.assertNotIn('Downloading', self.phases())
         self.assertIn('Uploading', self.phases())
-        self.assertIn('Verifying sample', self.phases())
+        self.assertIn('Verifying', self.phases())
 
 
 if __name__ == '__main__':

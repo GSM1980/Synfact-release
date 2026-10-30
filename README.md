@@ -105,9 +105,8 @@ Project code and documentation are licensed under the [MIT License](LICENSE), us
 
 ## Synfact Transfer
 
-Standalone desktop transfer application, version 0.0.5. Faster verification of short
-high-memory sample uploads and corrected read-progress totals; retains the Digitone
-sound import filter fixes.
+Standalone desktop transfer application, version 0.0.4. Fixes Digitone sound import filter
+parameters.
 See the [Synfact Transfer changelog](synfact-transfer/readme.md#changelog) for the
 version history.
 

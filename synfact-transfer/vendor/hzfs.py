@@ -275,9 +275,9 @@ class Guard:
             raise PermissionError(f'hzfs: refused request type 0x{type_byte:02x}')
         return self.dev.call(type_byte, payload, timeout=timeout)
 
-    def activity(self, label, **kwargs):
+    def activity(self, label):
         method = getattr(self.dev, 'activity', None)
-        return method(label, **kwargs) if method else contextlib.nullcontext()
+        return method(label) if method else contextlib.nullcontext()
 
 
 def data_object(n, body):
@@ -293,8 +293,8 @@ class Store:
         self.write_block, self.write_rest = write_block, write_rest
         self.windows = None
 
-    def activity(self, label, **kwargs):
-        return self.dev.activity(label, **kwargs)
+    def activity(self, label):
+        return self.dev.activity(label)
 
     # -- raw blocks
     def read_blocks(self, first, count, length):
@@ -303,36 +303,6 @@ class Store:
             body, _ = self.reader.window(k)
             out += body
         return bytes(out[:length])
-
-    def verify_blocks(self, first, count, expected):
-        """Compare every uploaded byte before publishing its catalog entry.
-
-        Complete windows retain outer-object CRC validation. For the final
-        partial window only, compare the complete used prefix with the bytes
-        just sent; unrelated padding is not part of the uploaded sample.
-        Prefix errors/mismatches fall back to a complete CRC-checked read.
-        Cancellation/connection loss never retries or commits an entry.
-        """
-        if not expected or count != -(-len(expected) // WINDOW):
-            raise ValueError('Invalid sample verification extent.')
-        for i in range(count):
-            k = first + i
-            piece = expected[i * WINDOW:(i + 1) * WINDOW]
-            if len(piece) < WINDOW:
-                try:
-                    with self.activity('Verifying sample', read_bytes=len(piece)):
-                        back = self.reader.window_prefix(k, lambda _: len(piece), label='sample')
-                    if back != piece:
-                        raise ValueError('Sample prefix did not read back identical.')
-                    continue
-                except (ValueError, self.st.DeviceError) as error:
-                    if not getattr(error, 'retryable', True):
-                        raise
-                    self.log(f'Checking sample with a complete read: {error}')
-            with self.activity('Verifying sample (full read)'):
-                back, _ = self.reader.window(k)
-            if back[:len(piece)] != piece:
-                raise RuntimeError('data did not read back identical; index NOT changed')
 
     def write_at(self, k, body):
         if k < HZ_FIRST_K:
@@ -478,7 +448,9 @@ def cmd_put(store, wav, name=None, *, state=None):
     first = allocate(blocks, copies, index.windows)
     store.log(f'put {name!r}: {frames / RATE:.2f} s, {len(body)} B -> blocks {first:#06x}..{first + blocks - 1:#06x}')
     store.write_at(first, body)
-    store.verify_blocks(first, blocks, body)
+    back = store.read_blocks(first, blocks, len(body))
+    if back != body:
+        raise RuntimeError('data did not read back identical; index NOT changed')
     entry = dict(id=index.next_id, first=first, blocks=blocks, bytes=len(body), frames=frames, crc=crc(body),
                  created=int(time.time()), flags=0, name=name)
     index.entries.append(entry)
