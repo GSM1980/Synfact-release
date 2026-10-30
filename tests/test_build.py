@@ -10,7 +10,12 @@ from unittest.mock import patch
 from urllib.error import URLError
 import zlib
 
-import build
+import importlib.util
+
+# Browser parity tests also import the desktop directory, which has build.py.
+_spec = importlib.util.spec_from_file_location('release_build_under_test', Path(__file__).resolve().parents[1] / 'build.py')
+build = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(build)
 
 
 def spec(data, filename):
